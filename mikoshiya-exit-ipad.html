@@ -100,27 +100,47 @@ navigator.mediaDevices.getUserMedia({
 });
 
 /* ===== QR読み取り ===== */
-const canvas = document.createElement("canvas");
-const ctx = canvas.getContext("2d", { willReadFrequently:true });
-
-function scan(){
-
-  if(video.readyState !== video.HAVE_ENOUGH_DATA){
+function scan() {
+  // 送信中 or ロック中は読まない（表示だけ更新）
+  if (sending || Date.now() < lockUntil) {
     requestAnimationFrame(scan);
     return;
   }
 
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
-  ctx.drawImage(video,0,0,canvas.width,canvas.height);
-
-  const imageData = ctx.getImageData(0,0,canvas.width,canvas.height);
-  const code = jsQR(imageData.data,imageData.width,imageData.height);
-
-  if(code && code.data){
-    const id = code.data.trim();
-    send(id);
+  // 映像が準備できるまで待つ
+  if (video.readyState !== video.HAVE_ENOUGH_DATA) {
+    requestAnimationFrame(scan);
     return;
+  }
+
+  // canvasサイズは一度だけセット（安定化）
+  if (!canvas.width || !canvas.height) {
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+  }
+
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+  // ★反転対応を入れる（iPadで効くことある）
+  const code =
+    jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "attemptBoth" });
+
+  if (code && code.data) {
+    const id = code.data.trim();
+
+    // 同じQR連打防止（COOLDOWN_MS）
+    const now = Date.now();
+    if (id === lastId && (now - lastAt) < COOLDOWN_MS) {
+      requestAnimationFrame(scan);
+      return;
+    }
+
+    lastId = id;
+    lastAt = now;
+
+    send(id); // sendの中でsending/lockUntilを管理
   }
 
   requestAnimationFrame(scan);
