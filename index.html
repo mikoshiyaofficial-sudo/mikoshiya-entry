@@ -44,8 +44,8 @@
   <h1>ミコシヤ受付</h1>
 
   <div id="mode">
-    <button id="btnIn" class="active" type="button">入室</button>
-    <button id="btnOut" type="button">退室</button>
+    <button id="btnIn" class="active" type="button">祭り参加(入室)</button>
+    <button id="btnOut" type="button">祭りの後(退室)</button>
   </div>
 
   <video id="video" playsinline></video>
@@ -112,8 +112,8 @@ function setMode(m){
   btnIn.classList.toggle("active", m==="IN");
   btnOut.classList.toggle("active", m==="OUT");
   msg.textContent = (m==="IN")
-    ? "入室モード：QRをかざしてください"
-    : "退室モード：QRをかざしてください";
+    ? "祭り参加(入室)モード：QRをかざしてください"
+    : "祭りの後(退室)モード：QRをかざしてください";
 }
 
 /* ===== カメラ起動 ===== */
@@ -176,7 +176,7 @@ function handleScan(raw){
 /* ===== 送信 ===== */
 async function send(id){
   sending = true;
-  const label = (mode === "IN") ? "入室" : "退室";
+  const label = (mode === "IN") ? "祭り参加(入室)" : "祭りの後(退室)";
   msg.textContent = `${id} さん ${label} 送信中…`;
 
   try{
