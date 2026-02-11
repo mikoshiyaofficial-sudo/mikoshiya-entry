@@ -3,24 +3,24 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ミコシヤ 退室</title>
+
+<title>ミコシヤ退室</title>
 
 <style>
 body{
   text-align:center;
   font-family:sans-serif;
-  background:#f8f8f8;
+  background:#f4f4f4;
 }
 
-h1{
-  margin-top:20px;
-}
+h1{ margin-top:20px; }
+h2{ color:#ff4d4d; }
 
 video{
-  width:80%;
+  width:90%;
   max-width:500px;
-  border:6px solid #ff4d4d;
   border-radius:20px;
+  border:5px solid #ff4d4d;
 }
 
 #msg{
@@ -42,34 +42,39 @@ button{
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 
 </head>
-
 <body>
 
 <h1>ミコシヤ受付</h1>
-<h2 style="color:#ff4d4d;">退室</h2>
+<h2>退室</h2>
 
 <video id="video" playsinline></video>
 <div id="msg">QRをかざしてください</div>
-
 <button id="enableSound">🔊 音を有効にする</button>
 
 <script>
 
 /* ===== 設定（ここだけ変更OK） ===== */
-const scriptUrl = "あなたのGASのURLをここに貼る";
-const token = "MIKOSHIYA_2026";
-const device = "mikoshiya-ipad-exit";
+const scriptUrl = "ここにGASのURLを貼る";
+const token     = "MIKOSHIYA_2026";
+const device    = "mikoshiya-ipad-exit";
 
 /* ===== DOM ===== */
-const msg = document.getElementById("msg");
-const video = document.getElementById("video");
+const msg       = document.getElementById("msg");
+const video     = document.getElementById("video");
 const enableBtn = document.getElementById("enableSound");
 
-/* ===== 状態管理 ===== */
-let audioUnlocked = false;
-let sending = false;
+/* ===== モード固定 ===== */
+const mode = "OUT";
+
+/* ===== QR制御 ===== */
+const COOLDOWN_MS = 3000;
+const OK_LOCK_MS  = 20000;
+
 let lockUntil = 0;
-const OK_LOCK_MS = 20000;
+let lastId    = "";
+let lastAt    = 0;
+let sending   = false;
+let audioUnlocked = false;
 
 /* ===== 音 ===== */
 const soundOut = new Audio("out.mp3");
@@ -100,39 +105,42 @@ navigator.mediaDevices.getUserMedia({
 });
 
 /* ===== QR読み取り ===== */
-function scan() {
-  // 送信中 or ロック中は読まない（表示だけ更新）
-  if (sending || Date.now() < lockUntil) {
+const canvas = document.createElement("canvas");
+const ctx    = canvas.getContext("2d",{ willReadFrequently:true });
+
+function scan(){
+
+  if(sending || Date.now() < lockUntil){
     requestAnimationFrame(scan);
     return;
   }
 
-  // 映像が準備できるまで待つ
-  if (video.readyState !== video.HAVE_ENOUGH_DATA) {
+  if(video.readyState !== video.HAVE_ENOUGH_DATA){
     requestAnimationFrame(scan);
     return;
   }
 
-  // canvasサイズは一度だけセット（安定化）
-  if (!canvas.width || !canvas.height) {
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+  if(!canvas.width){
+    canvas.width  = Math.floor(video.videoWidth  * 0.6);
+    canvas.height = Math.floor(video.videoHeight * 0.6);
   }
 
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  ctx.drawImage(video,0,0,canvas.width,canvas.height);
+  const imageData = ctx.getImageData(0,0,canvas.width,canvas.height);
 
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const code = jsQR(
+    imageData.data,
+    imageData.width,
+    imageData.height,
+    { inversionAttempts:"attemptBoth" }
+  );
 
-  // ★反転対応を入れる（iPadで効くことある）
-  const code =
-    jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "attemptBoth" });
+  if(code && code.data){
 
-  if (code && code.data) {
     const id = code.data.trim();
-
-    // 同じQR連打防止（COOLDOWN_MS）
     const now = Date.now();
-    if (id === lastId && (now - lastAt) < COOLDOWN_MS) {
+
+    if(id === lastId && (now - lastAt) < COOLDOWN_MS){
       requestAnimationFrame(scan);
       return;
     }
@@ -140,7 +148,8 @@ function scan() {
     lastId = id;
     lastAt = now;
 
-    send(id); // sendの中でsending/lockUntilを管理
+    send(id);
+    return;
   }
 
   requestAnimationFrame(scan);
@@ -160,17 +169,15 @@ async function send(id){
     const url =
       scriptUrl +
       "?id=" + encodeURIComponent(id) +
-      "&mode=OUT" +
+      "&mode=" + mode +
       "&token=" + encodeURIComponent(token) +
       "&device=" + encodeURIComponent(device) +
       "&_=" + Date.now();
 
     const res = await fetch(url,{ cache:"no-store" });
-
     if(!res.ok) throw new Error();
 
     msg.textContent = id + " さん 退室OK！";
-
     lockUntil = Date.now() + OK_LOCK_MS;
 
     if(audioUnlocked){
@@ -192,7 +199,7 @@ async function send(id){
 setInterval(()=>{
   if(lockUntil > Date.now()){
     const sec = Math.ceil((lockUntil - Date.now())/1000);
-    msg.textContent = "受付完了。次の方どうぞ（あと" + sec + "秒）";
+    msg.textContent = "受付完了。次の方どうぞ（あと " + sec + " 秒）";
   }
 },500);
 
