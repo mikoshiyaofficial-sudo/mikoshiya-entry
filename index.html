@@ -109,9 +109,15 @@ const mode = "IN";
 /* ===== カメラ起動 ===== */
 navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } } })
   .then(stream => {
-    video.srcObject = stream;
-    video.play();
-    requestAnimationFrame(scan);
+video.srcObject = stream;
+video.setAttribute("playsinline", true);
+video.muted = true;
+video.autoplay = true;
+
+video.onloadedmetadata = () => {
+  video.play().catch(()=>{});
+  requestAnimationFrame(scan);
+};
   })
   .catch(() => {
     msg.textContent = "カメラが使えません（Safariのカメラ許可を確認）";
