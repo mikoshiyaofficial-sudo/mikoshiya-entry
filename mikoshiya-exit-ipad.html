@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<title>ミコシヤ退室</title>
+<title>ミコシヤ祭りの後</title>
 
 <style>
 body{
@@ -45,7 +45,7 @@ button{
 <body>
 
 <h1>ミコシヤ受付</h1>
-<h2>退室</h2>
+<h2>祭りの後</h2>
 
 <video id="video" playsinline></video>
 <div id="msg">QRをかざしてください</div>
@@ -169,7 +169,7 @@ async function send(id){
   if(Date.now() < lockUntil) return;
 
   sending = true;
-  msg.textContent = id + " さん 退室送信中...";
+  msg.textContent = id + " さん 祭りの後送信中...";
 
   try{
 
@@ -184,7 +184,7 @@ async function send(id){
     const res = await fetch(url,{ cache:"no-store" });
     if(!res.ok) throw new Error();
 
-    msg.textContent = id + " さん 退室OK！";
+    msg.textContent = id + " さん 祭りの後OK！";
     lockUntil = Date.now() + OK_LOCK_MS;
 
     if(audioUnlocked){
