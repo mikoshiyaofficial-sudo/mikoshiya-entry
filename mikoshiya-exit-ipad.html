@@ -84,19 +84,27 @@ let lockTimer = null;
 
 /* ====== 音 ====== */
 const soundOut = new Audio("exit.mp3");
+soundOut.preload = "auto";
 
-enableBtn.addEventListener("click", async () => {
-  try{
+enableBtn.addEventListener("pointerdown", async (e) => {
+  e.preventDefault();
+  try {
+    // iPad対策：一瞬ミュート再生→停止で“解錠”
+    soundOut.muted = true;
     await soundOut.play();
     soundOut.pause();
     soundOut.currentTime = 0;
-    audioUnlocked = true;
-    enableBtn.style.display = "none";
-  }catch(e){
-    msg.textContent = "⚠ 音の有効化に失敗。もう一度タップしてね";
-  }
-});
+    soundOut.muted = false;
 
+    audioUnlocked = true;
+    msg.textContent = "✅ 音を有効化しました";
+    enableBtn.style.display = "none";
+  } catch (e) {
+    console.log(e);
+    msg.textContent = "⚠️ 音の有効化に失敗。もう一度タップしてね";
+  }
+}, { passive: false });
+  
 /* ====== カメラ起動 ====== */
 navigator.mediaDevices.getUserMedia({ video:{ facingMode:{ ideal:"environment"} } })
 .then(stream=>{
