@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ミコシヤ受付（退室専用）</title>
+
+<style>
+body{
+  font-family:sans-serif;
+  text-align:center;
+  background:#fff;
+}
+
+h1{
+  margin-top:30px;
+}
+
+#video{
+  width:80%;
+  max-width:500px;
+  margin:20px auto;
+  border-radius:20px;
+  border:6px solid #ff4d4d;
+  background:#000;
+}
+
+#msg{
+  font-size:20px;
+  margin:15px;
+}
+
+button{
+  padding:14px 20px;
+  border-radius:10px;
+  border:none;
+  background:#333;
+  color:#fff;
+  font-size:16px;
+}
+</style>
+</head>
+
+<body>
+
+<h1>ミコシヤ受付</h1>
+
+<h2 style="color:#ff4d4d;">退室</h2>
+
+<video id="video" playsinline></video>
+
+<div id="msg">QRをかざしてください</div>
+
+<button id="enableSound">🔊 音を有効にする</button>
+
+<script>
+
+/* ====== 設定（ここだけ変更OK） ====== */
+const scriptUrl = "https://script.google.com/macros/s/AKfycbwcv3zkiuE3SspSdpXTBK6cJG4xmxXnolWfG2-nyjuOa0qwSEKAtNItD-wuKOwRBdDtww/exec";
+const token = "MIKOSHIYA_2026";
+const device = "mikoshiya-ipad-exit";
+
+/* ====== DOM ====== */
+const msg = document.getElementById("msg");
+const video = document.getElementById("video");
+const enableBtn = document.getElementById("enableSound");
+
+/* ====== モード固定 ====== */
+const mode = "OUT";
+
+/* ====== QR制御 ====== */
+const COOLDOWN_MS = 3000;
+const OK_LOCK_MS = 20000;
+
+let lockUntil = 0;
+let lastId = "";
+let lastAt = 0;
+let sending = false;
+let audioUnlocked = false;
+let lockTimer = null;
+
+/* ====== 音 ====== */
+const soundOut = new Audio("exit.mp3");
+
+enableBtn.addEventListener("click", async () => {
+  try{
+    await soundOut.play();
+    soundOut.pause();
+    soundOut.currentTime = 0;
+    audioUnlocked = true;
+    enableBtn.style.display = "none";
+  }catch(e){
+    msg.textContent = "⚠ 音の有効化に失敗。もう一度タップしてね";
+  }
+});
+
+/* ====== カメラ起動 ====== */
+navigator.mediaDevices.getUserMedia({ video:{ facingMode:{ ideal:"environment"} } })
+.then(stream=>{
+  video.srcObject = stream;
+  video.play();
+  requestAnimationFrame(scan);
+})
+.catch(()=>{
+  msg.textContent = "カメラが使えません";
+});
+
+/* ====== QR読み取り（仮） ====== */
+function scan(){
+  // ★ここは実際のQRライブラリで取得
+  requestAnimationFrame(scan);
+}
+
+/* ====== 送信処理 ====== */
+async function send(id){
+
+  sending = true;
+
+  msg.textContent = `${id} さん 退室 送信中...`;
+
+  try{
+    const url =
+      `${scriptUrl}?id=${encodeURIComponent(id)}` +
+      `&mode=${mode}` +
+      `&token=${encodeURIComponent(token)}` +
+      `&device=${encodeURIComponent(device)}` +
+      `&_=${Date.now()}`;
+
+    const res = await fetch(url,{ cache:"no-store" });
+    if(!res.ok) throw new Error();
+
+    msg.textContent = `${id} さん 退室 OK！`;
+
+    lockUntil = Date.now() + OK_LOCK_MS;
+    startLockTimer();
+
+    if(audioUnlocked){
+      soundOut.currentTime = 0;
+      soundOut.play();
+    }
+
+  }catch(e){
+    msg.textContent = "通信失敗…もう一度かざしてね";
+    lastAt = 0;
+    lockUntil = 0;
+  }finally{
+    setTimeout(()=> sending=false,600);
+  }
+}
+
+/* ====== ロックカウント ====== */
+function startLockTimer(){
+
+  if(lockTimer) return;
+
+  lockTimer = setInterval(()=>{
+
+    if(Date.now() < lockUntil){
+      const sec = Math.max(0, Math.floor((lockUntil - Date.now())/1000));
+      msg.textContent = `受付完了。次の方どうぞ（あと${sec}秒）`;
+    }
+    else if(lockUntil !== 0){
+      lockUntil = 0;
+      msg.textContent = "QRをかざしてください";
+    }
+
+  },500);
+}
+
+</script>
+</body>
+</html>
