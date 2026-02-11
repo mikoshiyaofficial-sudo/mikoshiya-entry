@@ -106,50 +106,51 @@ navigator.mediaDevices.getUserMedia({
 
 /* ===== QR読み取り ===== */
 const canvas = document.createElement("canvas");
-const ctx    = canvas.getContext("2d",{ willReadFrequently:true });
+const ctx = canvas.getContext("2d", { willReadFrequently: true });
 
-function scan(){
-
-  if(sending || Date.now() < lockUntil){
+function scan() {
+  // 送信中 or ロック中は読まない
+  if (sending || Date.now() < lockUntil) {
     requestAnimationFrame(scan);
     return;
   }
 
-  if(video.readyState !== video.HAVE_ENOUGH_DATA){
+  // jsQRが読み込めてるか（←超重要）
+  if (typeof jsQR !== "function") {
+    msg.textContent = "❌ jsQRが読み込めてない（scriptタグ確認）";
     requestAnimationFrame(scan);
     return;
   }
 
-  if(!canvas.width){
-    canvas.width  = Math.floor(video.videoWidth  * 0.6);
-    canvas.height = Math.floor(video.videoHeight * 0.6);
+  // 映像準備待ち
+  if (!video.videoWidth || !video.videoHeight) {
+    // iPadでここが長く続くことがある
+    // ただ待つ
+    requestAnimationFrame(scan);
+    return;
   }
 
-  ctx.drawImage(video,0,0,canvas.width,canvas.height);
-  const imageData = ctx.getImageData(0,0,canvas.width,canvas.height);
+  // canvasサイズは毎回（安定版）
+  const scale = 0.6; // 読めないなら 0.8 や 1.0 も試す
+  canvas.width  = Math.floor(video.videoWidth  * scale);
+  canvas.height = Math.floor(video.videoHeight * scale);
 
-  const code = jsQR(
-    imageData.data,
-    imageData.width,
-    imageData.height,
-    { inversionAttempts:"attemptBoth" }
-  );
+  try {
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-  if(code && code.data){
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-    const id = code.data.trim();
-    const now = Date.now();
+    const code = jsQR(imageData.data, imageData.width, imageData.height, {
+      inversionAttempts: "attemptBoth",
+    });
 
-    if(id === lastId && (now - lastAt) < COOLDOWN_MS){
-      requestAnimationFrame(scan);
+    if (code && code.data) {
+      const id = code.data.trim();
+      send(id);
       return;
     }
-
-    lastId = id;
-    lastAt = now;
-
-    send(id);
-    return;
+  } catch (e) {
+    msg.textContent = "❌ QR処理で例外: " + (e && e.message ? e.message : e);
   }
 
   requestAnimationFrame(scan);
