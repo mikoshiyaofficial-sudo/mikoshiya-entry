@@ -44,9 +44,8 @@
   <h1>ミコシヤ受付</h1>
 
   <div id="mode">
-    <button id="btnIn" class="active" type="button">祭り参加(入室)</button>
-    <button id="btnOut" type="button">祭りの後(退室)</button>
-  </div>
+    <button id="btnIn" class="active" type="button">祭り参加</button>
+    </div>
 
   <video id="video" playsinline></video>
 
@@ -101,19 +100,10 @@ enableBtn.addEventListener("click", async () => {
   }
 });
 
-/* ===== モード切替 ===== */
-let mode = "IN";
-
-btnIn.addEventListener("click", () => setMode("IN"));
-btnOut.addEventListener("click", () => setMode("OUT"));
-
-function setMode(m){
-  mode = m;
-  btnIn.classList.toggle("active", m==="IN");
-  btnOut.classList.toggle("active", m==="OUT");
-  msg.textContent = (m==="IN")
-    ? "祭り参加(入室)モード：QRをかざしてください"
-    : "祭りの後(退室)モード：QRをかざしてください";
+/* ===== モード固定(ipad受付専用) ===== */
+const mode = "IN";
+  msg.textContent = "祭り参加：QRをかざしてください";
+    
 }
 
 /* ===== カメラ起動 ===== */
@@ -176,7 +166,7 @@ function handleScan(raw){
 /* ===== 送信 ===== */
 async function send(id){
   sending = true;
-  const label = (mode === "IN") ? "祭り参加(入室)" : "祭りの後(退室)";
+  const label = "祭り参加"
   msg.textContent = `${id} さん ${label} 送信中…`;
 
   try{
