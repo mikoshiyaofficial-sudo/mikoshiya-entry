@@ -130,20 +130,26 @@ function scan() {
     return;
   }
 
-  // canvasサイズは毎回（安定版）
-  const scale = 0.6; // 読めないなら 0.8 や 1.0 も試す
-  canvas.width  = Math.floor(video.videoWidth  * scale);
-  canvas.height = Math.floor(video.videoHeight * scale);
+  // ===== 解析は「中央だけ切り抜き」 =====
+  const sw = video.videoWidth;
+  const sh = video.videoHeight;
 
-  try {
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  const crop = 0.65;               // 0.55〜0.8で調整（大きくすると範囲広い）
+  const cw = Math.floor(sw * crop);
+  const ch = Math.floor(sh * crop);
+  const sx = Math.floor((sw - cw) / 2);
+  const sy = Math.floor((sh - ch) / 2);
 
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  canvas.width  = cw;
+  canvas.height = ch;
 
-    const code = jsQR(imageData.data, imageData.width, imageData.height, {
-      inversionAttempts: "attemptBoth",
-    });
+  ctx.drawImage(video, sx, sy, cw, ch, 0, 0, cw, ch);
 
+  const imageData = ctx.getImageData(0, 0, cw, ch);
+
+  const code = jsQR(imageData.data, imageData.width, imageData.height, {
+    inversionAttempts: "attemptBoth",
+  });
     if (code && code.data) {
       const id = code.data.trim();
       send(id);
