@@ -8,31 +8,14 @@
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 
 <style>
-  :root{
-    --red:#d83a3a;
-  }
-  body{
-    margin:0;
-    text-align:center;
-    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;
-    background:#f7f7f7;
-  }
-  h1{
-    margin:18px 0 6px;
-    font-size:44px;
-    letter-spacing:1px;
-  }
-  h2{
-    margin:0 0 14px;
-    color:var(--red);
-    font-size:34px; /* ← 祭り参加を大きく */
-    font-weight:800;
-  }
+  :root{ --red:#d83a3a; }
+  body{ margin:0; text-align:center; font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif; background:#f7f7f7; }
+  h1{ margin:18px 0 6px; font-size:44px; letter-spacing:1px; }
+  h2{ margin:0 0 14px; color:var(--red); font-size:34px; font-weight:800; }
 
-  /* カメラ枠（ここに収める） */
   .frame{
     width:min(820px, 92vw);
-    height:min(980px, 62vh);   /* iPadでデカくなりすぎない */
+    height:min(980px, 62vh);
     margin:0 auto;
     border:8px solid var(--red);
     border-radius:26px;
@@ -40,21 +23,10 @@
     overflow:hidden;
     box-sizing:border-box;
   }
-  video{
-    width:100%;
-    height:100%;
-    object-fit:cover; /* 枠いっぱいに収める */
-    display:block;
-  }
+  video{ width:100%; height:100%; object-fit:cover; display:block; }
 
-  #msg{
-    margin:18px 0 6px;
-    font-size:28px;
-    font-weight:700;
-    min-height:40px;
-  }
+  #msg{ margin:18px 0 6px; font-size:28px; font-weight:700; min-height:40px; }
 
-  /* 音ボタン：必ず見えるように固定 */
   #enableSound{
     display:inline-block;
     margin:10px auto 10px;
@@ -66,12 +38,7 @@
     background:#fff;
   }
 
-  #debug{
-    margin:6px 0 16px;
-    font-size:14px;
-    color:#777;
-    min-height:18px;
-  }
+  #debug{ margin:6px 0 16px; font-size:14px; color:#777; min-height:18px; }
 
   .ok{
     color:var(--red);
@@ -84,7 +51,7 @@
 
 <body>
   <h1>ミコシヤ受付</h1>
-  <h2>祭り参加</h2>
+  <h2>祭りの後</h2>
 
   <div class="frame">
     <video id="video" playsinline muted></video>
@@ -98,11 +65,11 @@
 /* ===== 設定（ここだけ変える） ===== */
 const scriptUrl = "https://script.google.com/macros/s/AKfycbygciufvsabhNk04OosYA2nf4VzcPCPCqX4_yAD4esNZWwqL1_tyxYzmNQ26z60YXYC0w/exec"; // ★差し替え
 const token  = "MIKOSHIYA_2026";
-const device = "mikoshiya-ipad-entry";
-const mode   = "IN"; // 祭り参加 = IN
+const device = "mikoshiya-ipad-exit";
+const mode   = "OUT"; // 祭りの後 = OUT
 /* =============================== */
 
-const OK_LOCK_MS = 2000;
+const OK_LOCK_MS = 3500;     // ← 金額表示を見せたいなら長め
 const FAIL_LOCK_MS = 1200;
 const SCAN_INTERVAL_MS = 120;
 const DUP_GUARD_MS = 2500;
@@ -125,7 +92,6 @@ let audioCtx=null;
 btnSound.addEventListener("click", async ()=>{
   try{
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    // iOSで確実に起こす
     if (audioCtx.state === "suspended") await audioCtx.resume();
     beep(1100, 0.08);
     btnSound.textContent = "✅ 音 OK";
@@ -144,20 +110,14 @@ function beep(freq=880,duration=0.12){
   osc.frequency.value=freq;
   gain.gain.value=0.2;
   osc.start();
-  setTimeout(()=>{
-    try{ osc.stop(); }catch(_){}
-  }, duration*1000);
+  setTimeout(()=>{ try{ osc.stop(); }catch(_){} }, duration*1000);
 }
 
 /* ===== カメラ ===== */
 (async ()=>{
   try{
     const stream = await navigator.mediaDevices.getUserMedia({
-      video:{
-        facingMode:"environment",
-        width:{ideal:1280},
-        height:{ideal:720}
-      },
+      video:{ facingMode:"environment", width:{ideal:1280}, height:{ideal:720} },
       audio:false
     });
     video.srcObject = stream;
@@ -218,8 +178,19 @@ async function send(id){
 
     if(data && data.ok === true){
       beep(1300,0.09);
-      msg.innerHTML = `<div class="ok">${id} さん<br>入室しました</div>`;
+
+      // OUTは「時間と金額」を表示
+      const minutes = (data.minutes != null) ? data.minutes : "";
+      const amount  = (data.amount  != null) ? data.amount  : "";
+
+      msg.innerHTML =
+        `<div class="ok">${id} さん</div>` +
+        `<div style="font-size:18px;margin-top:6px;">ありがとうございました</div>` +
+        `<div style="font-size:24px;margin-top:10px;">利用時間：${minutes} 分</div>` +
+        `<div style="font-size:36px;color:#ff4d4d;margin-top:10px;">料金：${amount} 円</div>`;
+
       lockUntil = Date.now() + OK_LOCK_MS;
+
     }else{
       beep(300,0.2);
       msg.textContent = (data && data.message) ? data.message : "通信失敗";
