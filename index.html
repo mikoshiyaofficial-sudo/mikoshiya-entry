@@ -288,46 +288,60 @@
     /********************
      * 送信（v3：mode無し）
      ********************/
-    async function send(id){
-      const now = Date.now();
-      if(sending || now < lockUntil) return;
+   async function send(id){
+  const now = Date.now();
 
-      // 20秒 同一IDガード
-      if(id === lastId && (now - lastIdAt) < DUP_GUARD_MS) return;
+  if(sending || now < lockUntil) return;
+  if(id === lastId && (now - lastIdAt) < DUP_GUARD_MS) return;
 
-      lastId = id;
-      lastIdAt = now;
+  lastId = id;
+  lastIdAt = now;
 
-      sending = true;
-      msg.textContent = "通信中…";
-      sub.textContent = "";
+  sending = true;
+  msg.textContent = "通信中…";
+  sub.textContent = "";
 
-      try{
-        const url = `${scriptUrl}?id=${encodeURIComponent(id)}&token=${encodeURIComponent(token)}&device=${encodeURIComponent(device)}&t=${Date.now()}`;
-        // debug.style.display="block"; debug.textContent = url;
+  // ★キャッシュ回避 t を付ける
+  const url = `${scriptUrl}?id=${encodeURIComponent(id)}&mode=${encodeURIComponent(mode)}&token=${encodeURIComponent(token)}&device=${encodeURIComponent(device)}&t=${Date.now()}`;
 
-        const res = await fetch(url, { cache:"no-store" });
-        const data = await res.json();
+  try{
+    const res = await fetch(url, { cache:"no-store" });
 
-        if(!res.ok) throw new Error(`HTTP ${res.status}`);
-        if(!data || data.ok !== true) throw new Error(data?.message || "unknown");
+    // ★まず text で受け取る（JSONじゃない時に原因が見える）
+    const text = await res.text();
 
-        // GAS v3: action が IN/OUT
-        if(data.action === "IN"){
-          showInOk(id);
-        }else if(data.action === "OUT"){
-          showOutOk(id, Number(data.minutes ?? 0), Number(data.amount ?? 0));
-        }else{
-          // 予期しない場合でも表示
-          showError("通信結果が不明", JSON.stringify(data));
-        }
-
-      }catch(e){
-        showError("通信失敗。もう一度かざしてね", (e?.message || e));
-      }finally{
-        setTimeout(()=>{ sending = false; }, 350);
-      }
+    // ★HTTPエラーはここで表示
+    if(!res.ok){
+      throw new Error(`HTTP ${res.status} / ${text.slice(0,180)}`);
     }
+
+    // ★JSON parse（HTMLが返ってきたらここで分かる）
+    let data;
+    try { data = JSON.parse(text); }
+    catch(e){ throw new Error(`JSONじゃない: ${text.slice(0,180)}`); }
+
+    if(!data.ok){
+      throw new Error(data.message || "ok:false");
+    }
+
+    // 成功（v3仕様に合わせて表示は後で調整でOK）
+    msg.innerHTML = `<span style="font-size:36px;font-weight:1000">${id} さん</span>`;
+    sub.innerHTML = `<div style="font-size:20px;font-weight:900;color:#444">通信OK</div>`;
+
+    beep("ok");
+    lockUntil = Date.now() + OK_LOCK_MS;
+
+  }catch(e){
+    msg.textContent = "通信失敗。もう一度かざしてね";
+    sub.textContent = (e?.message || String(e)); // ★ここに原因が出る
+    beep("ng");
+    lockUntil = Date.now() + FAIL_LOCK_MS;
+
+  }finally{
+    setTimeout(()=>{ sending = false; }, 400);
+  }
+}
+
 
     /********************
      * スキャンループ
