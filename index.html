@@ -1,255 +1,210 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>ミコシヤ受付 v2.5 - 祭りの後</title>
+<meta charset="UTF-8">
+<title>ミコシヤ受付 v2.5</title>
 
-  <style>
-    body{
-      margin:0;
-      font-family: system-ui, -apple-system, "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
-      background:#f3f3f3;
-      text-align:center;
-    }
-    h1{ margin:18px 0 4px; font-size:38px; }
-    h2{ margin:0 0 10px; font-size:22px; color:#e00000; font-weight:800; }
-    .ver{ position:fixed; right:14px; top:14px; color:#777; font-size:14px; }
-    #frame{
-      width:min(92vw, 820px);
-      aspect-ratio: 4 / 3;
-      margin: 10px auto 10px;
-      border:6px solid #e00000;
-      border-radius:18px;
-      overflow:hidden;
-      background:#111;
-    }
-    #video{ width:100%; height:100%; object-fit:cover; }
-    #msg{ margin:10px 0 6px; font-size:22px; font-weight:700; }
-    #enableSound{
-      margin: 8px auto 6px;
-      padding: 12px 18px;
-      font-size: 18px;
-      border-radius: 12px;
-      border: 0;
-      background:#222;
-      color:#fff;
-      display:none;
-    }
-    #debug{ margin:6px auto 14px; font-size:12px; color:#666; width:min(92vw, 820px); word-break:break-all; }
-  </style>
+<script src="https://cdn.jsdelivr.net/npm/jsqr"></script>
 
-  <!-- jsQR -->
-  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+<style>
+body{
+  text-align:center;
+  font-family:sans-serif;
+}
+
+h1{
+  font-size:48px;
+}
+
+h2{
+  color:red;
+  font-size:36px;
+}
+
+#msg{
+  font-size:28px;
+  margin-top:20px;
+}
+
+.ok{
+  color:red;
+  font-size:40px;
+}
+
+video{
+  width:80%;
+  border:8px solid red;
+  border-radius:20px;
+}
+</style>
+
 </head>
 
 <body>
-  <div class="ver">v2.5</div>
-  <h1>ミコシヤ受付</h1>
-  <h2>祭りの後</h2>
 
-  <div id="frame">
-    <video id="video" playsinline muted></video>
-  </div>
+<h1>ミコシヤ受付</h1>
+<h2>祭り参加</h2>
 
-  <div id="msg">QRをかざしてください</div>
-  <button id="enableSound">🔊 音を有効にする</button>
-  <div id="debug"></div>
+<video id="video" playsinline muted></video>
+
+<div id="msg">QRをかざしてください</div>
+<button id="enableSound">🔊 音を有効にする</button>
+<div id="debug"></div>
 
 <script>
-/* ========= 設定（ここだけ変える） ========= */
-const scriptUrl = "https://script.google.com/macros/s/AKfycbygciufvsabhNk04OosYA2nf4VzcPCPCqX4_yAD4esNZWwqL1_tyxYzmNQ26z60YXYC0w/exec";
-const token     = "MIKOSHIYA_2026";
-const device    = "mikoshiya-ipad-exit";
-const mode      = "OUT";  // 祭りの後 = OUT
 
-/* ========= 動作パラメータ ========= */
-const OK_LOCK_MS = 3500;     // 金額表示してる時間 → 自動トップ復帰
+/* ========= 設定 ========= */
+
+const scriptUrl = "https://script.google.com/macros/s/AKfycbygciufvsabhNk04OosYA2nf4VzcPCPCqX4_yAD4esNZWwqL1_tyxYzmNQ26z60YXYC0w/exec"; // ← 必ず変更
+const token = "MIKOSHIYA_2026";
+
+const device = "mikoshiya-ipad-entry";
+const mode = "IN"; // ★ここが超重要（祭り参加＝IN）
+
+/* ========= 動作設定 ========= */
+
+const OK_LOCK_MS = 3500;
 const FAIL_LOCK_MS = 1200;
-const SCAN_INTERVAL_MS = 120; // スキャン間隔（負荷調整）
-const DUP_GUARD_MS = 2500;    // 同じQR連打防止
+const SCAN_INTERVAL_MS = 120;
+const DUP_GUARD_MS = 2500;
 
 /* ========= DOM ========= */
+
 const video = document.getElementById("video");
-const msg   = document.getElementById("msg");
-const debug = document.getElementById("debug");
+const msg = document.getElementById("msg");
 const btnSound = document.getElementById("enableSound");
 
 const canvas = document.createElement("canvas");
-const ctx = canvas.getContext("2d", { willReadFrequently: true });
+const ctx = canvas.getContext("2d",{willReadFrequently:true});
 
 /* ========= 状態 ========= */
-let sending = false;
-let lockUntil = 0;
-let lastId = "";
-let lastIdAt = 0;
-let audioUnlocked = false;
 
-/* ========= 効果音（太鼓/花火の代わり） ========= */
-const soundOK = new Audio("https://cdn.pixabay.com/download/audio/2022/03/15/audio_2f5c0a6a66.mp3?filename=success-1-6297.mp3");
-soundOK.preload = "auto";
-soundOK.volume = 0.9;
+let sending=false;
+let lockUntil=0;
+let lastId="";
+let lastIdAt=0;
 
-/* iPad対策：ユーザー操作でAudioをunlock */
-function showSoundButton(){
-  btnSound.style.display = "inline-block";
+/* ========= 音 ========= */
+
+let audioCtx=null;
+
+btnSound.onclick=()=>{
+  audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+  btnSound.style.display="none";
+};
+
+function beep(freq=880,duration=0.1){
+  if(!audioCtx) return;
+  const osc=audioCtx.createOscillator();
+  const gain=audioCtx.createGain();
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.frequency.value=freq;
+  osc.start();
+  gain.gain.exponentialRampToValueAtTime(0.0001,audioCtx.currentTime+duration);
+  osc.stop(audioCtx.currentTime+duration);
 }
-btnSound.addEventListener("click", async () => {
-  try{
-    audioUnlocked = true;
-    // iOSのため一回鳴らして止める（unlock）
-    soundOK.currentTime = 0;
-    await soundOK.play();
-    soundOK.pause();
-    soundOK.currentTime = 0;
-    btnSound.style.display = "none";
-    msg.textContent = "音OK！QRをかざしてください";
-  }catch(e){
-    msg.textContent = "音の許可が必要です（もう一度押してね）";
-  }
+
+/* ========= カメラ ========= */
+
+navigator.mediaDevices.getUserMedia({
+  video:{facingMode:"environment"}
+})
+.then(stream=>{
+  video.srcObject=stream;
+  video.play();
+  requestAnimationFrame(scanLoop);
 });
 
-/* ========= ループ復帰（固まり防止の要） ========= */
-function scheduleReturn(ms){
-  lockUntil = Date.now() + ms;
-  setTimeout(() => {
-    sending = false;
-    msg.textContent = "QRをかざしてください";
-    debug.textContent = "";
-    requestAnimationFrame(scan);
-  }, ms);
-}
-
-function setError(text, reason){
-  msg.textContent = text;
-  debug.textContent = "ERROR: " + reason;
-  scheduleReturn(FAIL_LOCK_MS);
-}
-
-function isLocked(){
-  return Date.now() < lockUntil;
-}
-
-/* ========= カメラ開始 ========= */
-async function startCamera(){
-  try{
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "environment" },
-      audio: false
-    });
-    video.srcObject = stream;
-    await video.play();
-    requestAnimationFrame(scan);
-  }catch(e){
-    setError("カメラ起動できません", String(e));
-  }
-}
-
 /* ========= QRスキャン ========= */
-function scan(){
-  if (sending || isLocked()) return;
 
-  if (video.readyState !== video.HAVE_ENOUGH_DATA){
-    requestAnimationFrame(scan);
+function scanLoop(){
+
+  if(Date.now()<lockUntil){
+    requestAnimationFrame(scanLoop);
     return;
   }
 
-  const w = video.videoWidth;
-  const h = video.videoHeight;
-  if (!w || !h){
-    requestAnimationFrame(scan);
-    return;
-  }
+  if(video.readyState===video.HAVE_ENOUGH_DATA){
 
-  canvas.width = w;
-  canvas.height = h;
-  ctx.drawImage(video, 0, 0, w, h);
+    canvas.width=video.videoWidth;
+    canvas.height=video.videoHeight;
+    ctx.drawImage(video,0,0);
 
-  const img = ctx.getImageData(0, 0, w, h);
-  const code = jsQR(img.data, img.width, img.height, { inversionAttempts: "dontInvert" });
+    const imageData=ctx.getImageData(0,0,canvas.width,canvas.height);
+    const code=jsQR(imageData.data,canvas.width,canvas.height);
 
-  if (code && code.data){
-    const id = String(code.data).trim();
+    if(code){
+      const id=code.data.trim();
 
-    // 同一QRの連打防止
-    if (id === lastId && (Date.now() - lastIdAt) < DUP_GUARD_MS){
-      setTimeout(() => requestAnimationFrame(scan), SCAN_INTERVAL_MS);
-      return;
-    }
-    lastId = id;
-    lastIdAt = Date.now();
-
-    sendToGAS(id);
-    return;
-  }
-
-  setTimeout(() => requestAnimationFrame(scan), SCAN_INTERVAL_MS);
-}
-
-/* ========= 送信 ========= */
-async function sendToGAS(id){
-  sending = true;
-  msg.textContent = "送信中…";
-  debug.textContent = "";
-
-  try{
-    const url =
-      scriptUrl +
-      "?id=" + encodeURIComponent(id) +
-      "&mode=" + encodeURIComponent(mode) +
-      "&token=" + encodeURIComponent(token) +
-      "&device=" + encodeURIComponent(device) +
-      "&t=" + Date.now(); // キャッシュ避け
-
-    const res  = await fetch(url, { cache:"no-store" });
-    const text = await res.text();
-
-    if (!res.ok){
-      throw new Error(`HTTP ${res.status}: ${text}`);
-    }
-
-    let data = null;
-    try { data = JSON.parse(text); } catch(_) {}
-
-    if (data && data.ok === true){
-      // 成功表示（時間/金額）
-      msg.innerHTML =
-        "<div style='font-size:40px;font-weight:900'>" + esc(id) + " さん</div>" +
-        "<div style='font-size:18px;margin-top:6px;color:#555'>ありがとうございました</div>" +
-        "<div style='font-size:26px;margin-top:12px'>利用時間： " + (data.minutes ?? "") + " 分</div>" +
-        "<div style='font-size:44px;color:#e00000;font-weight:900;margin-top:10px'>料金： " + (data.amount ?? "") + " 円</div>";
-
-      // 音（unlockできてなければボタン表示）
-      if (audioUnlocked){
-        soundOK.currentTime = 0;
-        soundOK.play().catch(()=>{});
-      }else{
-        showSoundButton();
+      if(id===lastId && Date.now()-lastIdAt<DUP_GUARD_MS){
+        requestAnimationFrame(scanLoop);
+        return;
       }
 
-      scheduleReturn(OK_LOCK_MS);
-      return;
+      lastId=id;
+      lastIdAt=Date.now();
+
+      send(id);
+    }
+  }
+
+  setTimeout(()=>requestAnimationFrame(scanLoop),SCAN_INTERVAL_MS);
+}
+
+/* ========= GAS送信 ========= */
+
+async function send(id){
+
+  if(sending) return;
+  sending=true;
+
+  msg.textContent="送信中...";
+
+  try{
+
+    const url=`${scriptUrl}?id=${encodeURIComponent(id)}&mode=${mode}&token=${token}&device=${device}`;
+    const res=await fetch(url);
+    const data=await res.json();
+
+    if(data.ok){
+
+      beep(1200,0.15);
+
+      msg.innerHTML=`
+      <div class="ok">
+      ${id} さん<br>
+      ようこそ！<br>
+      入室しました
+      </div>
+      `;
+
+      lockUntil=Date.now()+OK_LOCK_MS;
+
+    }else{
+
+      beep(300,0.3);
+      msg.textContent=data.message;
+      lockUntil=Date.now()+FAIL_LOCK_MS;
     }
 
-    // GASが ok:false を返した
-    const reason = (data && data.message) ? data.message : text;
-    setError("通信失敗。もう一度かざしてね", reason);
-
   }catch(e){
-    setError("通信失敗。もう一度かざしてね", String(e && e.message ? e.message : e));
+    msg.textContent="通信エラー";
+    lockUntil=Date.now()+FAIL_LOCK_MS;
   }
+
+  sending=false;
 }
 
-function esc(s){
-  return String(s)
-    .replaceAll("&","&amp;")
-    .replaceAll("<","&lt;")
-    .replaceAll(">","&gt;")
-    .replaceAll('"',"&quot;")
-    .replaceAll("'","&#39;");
-}
+/* ========= 自動トップ復帰 ========= */
 
-startCamera();
+setInterval(()=>{
+  if(Date.now()>lockUntil){
+    msg.textContent="QRをかざしてください";
+  }
+},500);
+
 </script>
+
 </body>
 </html>
