@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>ミコシヤ受付 v3</title>
+  <title>ミコシヤ受付 v3 - 自動入退室</title>
 
   <!-- jsQR -->
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
@@ -13,7 +13,6 @@
       --bg:#f4f4f4;
       --red:#d44747;
       --text:#111;
-      --muted:#666;
     }
     body{
       margin:0;
@@ -22,58 +21,45 @@
       background:var(--bg);
       color:var(--text);
     }
-    header{ padding:20px 12px 8px; }
-    h1{ margin:0; font-size:40px; font-weight:900; letter-spacing:.02em; }
-    h2{ margin:10px 0 0; font-size:34px; font-weight:1000; color:var(--red); }
+    header{ padding:22px 12px 8px; }
+    h1{ margin:0; font-size:40px; font-weight:900; }
+    h2{ margin:10px 0 0; font-size:32px; font-weight:900; color:var(--red); }
 
     .frame{
       width:min(92vw, 980px);
-      aspect-ratio: 4 / 3;
+      aspect-ratio:4/3;
       margin:14px auto 10px;
       border:6px solid var(--red);
       border-radius:16px;
       overflow:hidden;
       background:#111;
-      box-sizing:border-box;
     }
-    video{
-      width:100%;
-      height:100%;
-      object-fit:cover;
-      display:block;
-    }
+    video{ width:100%; height:100%; object-fit:cover; }
 
     #msg{
-      width:min(92vw, 980px);
-      margin:10px auto 0;
-      min-height:56px;
-      font-size:30px;
+      margin-top:10px;
+      font-size:32px;
       font-weight:900;
-      display:flex;
-      align-items:center;
-      justify-content:center;
+      min-height:48px;
     }
     #sub{
-      width:min(92vw, 980px);
-      margin:4px auto 0;
-      min-height:28px;
-      font-size:18px;
+      font-size:20px;
       font-weight:800;
-      color:var(--muted);
+      color:#555;
+      min-height:26px;
     }
 
     #enableSound{
-      margin:14px auto 8px;
-      padding:16px 18px;
+      margin:16px auto;
+      padding:14px 20px;
       font-size:22px;
       font-weight:900;
-      border:0;
       border-radius:14px;
+      border:0;
       background:#111;
       color:#fff;
       width:min(70vw, 520px);
     }
-    #enableSound[disabled]{ opacity:.55; }
 
     #ver{
       position:fixed;
@@ -84,318 +70,183 @@
       font-weight:800;
     }
 
-    /* ここを block にするとデバッグ表示 */
-    #debug{
-      display:none;
-      width:min(92vw, 980px);
-      margin:8px auto 16px;
-      font-size:12px;
-      color:#666;
-      word-break:break-all;
-      text-align:left;
+    /* ===== エフェクト ===== */
+    .flash{
+      position:fixed;
+      inset:0;
+      background:white;
+      pointer-events:none;
+      animation:flashAnim .4s ease-out forwards;
+      z-index:9999;
+    }
+    @keyframes flashAnim{
+      from{opacity:1;}
+      to{opacity:0;}
+    }
+
+    .firework{
+      position:fixed;
+      width:20px;
+      height:20px;
+      border-radius:50%;
+      animation:explode .8s ease-out forwards;
+      pointer-events:none;
+      z-index:9999;
+    }
+    @keyframes explode{
+      from{transform:scale(.3);opacity:1;}
+      to{transform:scale(8);opacity:0;}
     }
   </style>
 </head>
 
 <body>
-  <div id="ver">v3</div>
+<div id="ver">v3</div>
 
-  <header>
-    <h1>ミコシヤ受付</h1>
-    <h2>自動 入退室</h2>
-  </header>
+<header>
+  <h1>ミコシヤ受付</h1>
+  <h2>自動 入退室</h2>
+</header>
 
-  <div class="frame">
-    <video id="video" playsinline muted></video>
-  </div>
+<div class="frame">
+  <video id="video" playsinline muted></video>
+</div>
 
-  <div id="msg">QRをかざしてください</div>
-  <div id="sub"></div>
+<div id="msg">QRをかざしてください</div>
+<div id="sub"></div>
 
-  <button id="enableSound">🔊 音を有効にする</button>
-  <div id="debug"></div>
+<button id="enableSound">🔊 音を有効にする</button>
 
-  <script>
-    /********************
-     * 設定（ここだけ変える）
-     ********************/
-    const scriptUrl = "https://script.google.com/macros/s/AKfycbzpIuZ3HQus23p5Fz4QiQDqCUweTcYFWT4loaF9lFPzdP2qpBu0Cfvb58jkN-MD3bZkrA/exec";  // 例: https://script.google.com/macros/s/XXXX/exec
-    const token  = "MIKOSHIYA_2026";
-    const device = "mikoshiya-ipad-v3";
+<script>
+/******** 設定 ********/
+const scriptUrl = "https://script.google.com/macros/s/AKfycbw9WwZ0qXAICy8VIjimrS-ySv6cp4q7HztZqIZDtgRUEfROhhJEWpzZBvxhdOg808jE/exec";
+const token  = "MIKOSHIYA_2026";
+const device = "mikoshiya-ipad-v3";
 
-    /********************
-     * 動作パラメータ
-     ********************/
-    const OK_LOCK_MS       = 4500;    // 成功表示してる時間（入室/退室）
-    const FAIL_LOCK_MS     = 1600;    // 失敗表示
-    const SCAN_INTERVAL_MS = 120;     // スキャン間隔
-    const DUP_GUARD_MS     = 20000;   // 20秒 同じQR連打防止（完全版）
-    const QR_CROP          = 1.0;     // 0.65〜1.0（重い/読まない時だけ0.8とかに）
+/******** 状態 ********/
+let sending=false, lockUntil=0;
+let lastId="", lastAt=0;
 
-    /********************
-     * DOM
-     ********************/
-    const video = document.getElementById("video");
-    const msg   = document.getElementById("msg");
-    const sub   = document.getElementById("sub");
-    const btnSound = document.getElementById("enableSound");
-    const debug = document.getElementById("debug");
+/******** DOM ********/
+const video=document.getElementById("video");
+const msg=document.getElementById("msg");
+const sub=document.getElementById("sub");
+const btnSound=document.getElementById("enableSound");
 
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d", { willReadFrequently:true });
+/******** Audio ********/
+let audioCtx=null, soundOn=false;
+function playSound(type){
+  if(!soundOn||!audioCtx)return;
+  const o=audioCtx.createOscillator();
+  const g=audioCtx.createGain();
+  o.type="sine";
+  o.frequency.value = type==="IN"?880:220;
+  g.gain.setValueAtTime(.0001,audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(.3,audioCtx.currentTime+.02);
+  g.gain.exponentialRampToValueAtTime(.0001,audioCtx.currentTime+.2);
+  o.connect(g); g.connect(audioCtx.destination);
+  o.start(); o.stop(audioCtx.currentTime+.21);
+}
 
-    /********************
-     * 状態
-     ********************/
-    let sending = false;
-    let lockUntil = 0;
-    let lastId = "";
-    let lastIdAt = 0;
+btnSound.onclick=async()=>{
+  audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+  await audioCtx.resume();
+  soundOn=true;
+  btnSound.textContent="✅ 音 有効";
+  btnSound.disabled=true;
+  playSound("IN");
+};
 
-    /********************
-     * 音（iPadでも確実な AudioContext）
-     ********************/
-    let audioCtx = null;
-    let soundEnabled = false;
+/******** エフェクト ********/
+function flash(color){
+  const f=document.createElement("div");
+  f.className="flash";
+  f.style.background=color;
+  document.body.appendChild(f);
+  setTimeout(()=>f.remove(),400);
+}
+function firework(){
+  const e=document.createElement("div");
+  e.className="firework";
+  e.style.left=(40+Math.random()*20)+"%";
+  e.style.top =(40+Math.random()*20)+"%";
+  e.style.background=`hsl(${Math.random()*360},100%,50%)`;
+  document.body.appendChild(e);
+  setTimeout(()=>e.remove(),800);
+}
 
-    function beep(type="ok"){
-      if(!soundEnabled || !audioCtx) return;
+/******** Camera ********/
+async function startCamera(){
+  const stream=await navigator.mediaDevices.getUserMedia({
+    video:{facingMode:"environment",width:{ideal:1280},height:{ideal:720}},
+    audio:false
+  });
+  video.srcObject=stream;
+  await video.play();
+}
 
-      const now = audioCtx.currentTime;
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
+/******** QR ********/
+const canvas=document.createElement("canvas");
+const ctx=canvas.getContext("2d",{willReadFrequently:true});
 
-      // ok: 高め / ng: 低め
-      osc.frequency.value = (type==="ok") ? 880 : 220;
-      osc.type = "sine";
+function readQR(){
+  if(video.readyState<2)return null;
+  canvas.width=video.videoWidth;
+  canvas.height=video.videoHeight;
+  ctx.drawImage(video,0,0);
+  const img=ctx.getImageData(0,0,canvas.width,canvas.height);
+  const code=jsQR(img.data,canvas.width,canvas.height);
+  return code?code.data:null;
+}
 
-      gain.gain.setValueAtTime(0.0001, now);
-      gain.gain.exponentialRampToValueAtTime(0.25, now + 0.01);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.16);
-
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-
-      osc.start(now);
-      osc.stop(now + 0.17);
-    }
-
-    btnSound.addEventListener("click", async ()=>{
-      try{
-        if(!audioCtx){
-          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        }
-        await audioCtx.resume();
-        soundEnabled = true;
-        btnSound.textContent = "✅ 音 有効";
-        btnSound.disabled = true;
-        beep("ok");
-      }catch(e){
-        debug.style.display="block";
-        debug.textContent = "AUDIO ERROR: " + (e?.message || e);
-      }
-    });
-
-    /********************
-     * カメラ起動
-     ********************/
-    async function startCamera(){
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: "environment",
-          width:  { ideal: 1280 },
-          height: { ideal: 720 }
-        },
-        audio:false
-      });
-      video.srcObject = stream;
-      await video.play();
-    }
-
-    /********************
-     * QR 読み取り
-     ********************/
-    function readQR(){
-      if(video.readyState < 2) return null;
-
-      const w0 = video.videoWidth, h0 = video.videoHeight;
-      if(!w0 || !h0) return null;
-
-      // 中央切り抜き（重さ/読みやすさ調整）
-      const crop = Math.max(0.4, Math.min(1.0, QR_CROP));
-      const cw = Math.floor(w0 * crop);
-      const ch = Math.floor(h0 * crop);
-      const sx = Math.floor((w0 - cw) / 2);
-      const sy = Math.floor((h0 - ch) / 2);
-
-      canvas.width = cw;
-      canvas.height = ch;
-      ctx.drawImage(video, sx, sy, cw, ch, 0, 0, cw, ch);
-
-      const img = ctx.getImageData(0,0,cw,ch);
-      const code = jsQR(img.data, cw, ch, { inversionAttempts:"attemptBoth" });
-      return code ? (code.data || "") : null;
-    }
-
-    function extractId(text){
-      text = String(text||"").trim();
-      if(!text) return "";
-
-      // 1) IDだけのQR
-      if (/^[A-Za-z0-9_-]{3,}$/.test(text) && !text.includes("http")) return text;
-
-      // 2) URL型 (?id=)
-      try{
-        const u = new URL(text);
-        const id = (u.searchParams.get("id") || u.searchParams.get("ID") || "").trim();
-        if(id) return id;
-      }catch(_){}
-
-      // 3) 念のため regex
-      const m = text.match(/[?&]id=([^&]+)/i);
-      return m ? decodeURIComponent(m[1]).trim() : "";
-    }
-
-    function setScreenDefault(){
-      msg.textContent = "QRをかざしてください";
-      sub.textContent = "";
-    }
-
-    function showError(main, detail){
-      msg.textContent = main;
-      sub.textContent = detail || "";
-      beep("ng");
-      lockUntil = Date.now() + FAIL_LOCK_MS;
-    }
-
-    function showInOk(id){
-      msg.innerHTML = `<span style="font-size:38px;font-weight:1000">${esc(id)} さん</span>`;
-      sub.innerHTML = `<div style="font-size:20px;font-weight:900;color:#444">ありがとうございます　入室OK</div>`;
-      beep("ok");
-      lockUntil = Date.now() + OK_LOCK_MS;
-    }
-
-    function showOutOk(id, minutes, amount){
-      msg.innerHTML =
-        `<div style="font-size:34px;font-weight:1000">${esc(id)} さん</div>`;
-      sub.innerHTML =
-        `<div style="font-size:22px;font-weight:900;color:#444;margin-top:4px">利用時間：${minutes} 分</div>` +
-        `<div style="font-size:44px;font-weight:1000;color:#d44747;margin-top:6px">料金：${amount} 円</div>`;
-      beep("ok");
-      lockUntil = Date.now() + OK_LOCK_MS;
-    }
-
-    /********************
-     * 送信（v3：mode無し）
-     ********************/
-   async function send(id){
-  const now = Date.now();
-
-  if(sending || now < lockUntil) return;
-  if(id === lastId && (now - lastIdAt) < DUP_GUARD_MS) return;
-
-  lastId = id;
-  lastIdAt = now;
-
-  sending = true;
-  msg.textContent = "通信中…";
-  sub.textContent = "";
-
-  // ★キャッシュ回避 t を付ける
-  const url = `${scriptUrl}?id=${encodeURIComponent(id)}&mode=${encodeURIComponent(mode)}&token=${encodeURIComponent(token)}&device=${encodeURIComponent(device)}&t=${Date.now()}`;
+/******** Send ********/
+async function send(id){
+  if(sending||Date.now()<lockUntil)return;
+  if(id===lastId && Date.now()-lastAt<20000)return;
+  lastId=id; lastAt=Date.now();
+  sending=true;
+  msg.textContent="通信中…"; sub.textContent="";
 
   try{
-    const res = await fetch(url, { cache:"no-store" });
+    const url=`${scriptUrl}?id=${encodeURIComponent(id)}&token=${token}&device=${device}`;
+    const res=await fetch(url,{cache:"no-store"});
+    const data=await res.json();
+    if(!data.ok) throw new Error(data.message);
 
-    // ★まず text で受け取る（JSONじゃない時に原因が見える）
-    const text = await res.text();
-
-    // ★HTTPエラーはここで表示
-    if(!res.ok){
-      throw new Error(`HTTP ${res.status} / ${text.slice(0,180)}`);
+    if(data.action==="IN"){
+      msg.textContent=`${id} さん`;
+      sub.textContent="祭りに参加 🎉";
+      flash("white"); firework(); playSound("IN");
+    }else{
+      msg.textContent=`${id} さん`;
+      sub.textContent=`退室 OK　${data.minutes}分 / ${data.amount}円`;
+      flash("rgba(255,0,0,.4)"); playSound("OUT");
     }
-
-    // ★JSON parse（HTMLが返ってきたらここで分かる）
-    let data;
-    try { data = JSON.parse(text); }
-    catch(e){ throw new Error(`JSONじゃない: ${text.slice(0,180)}`); }
-
-    if(!data.ok){
-      throw new Error(data.message || "ok:false");
-    }
-
-    // 成功（v3仕様に合わせて表示は後で調整でOK）
-    msg.innerHTML = `<span style="font-size:36px;font-weight:1000">${id} さん</span>`;
-    sub.innerHTML = `<div style="font-size:20px;font-weight:900;color:#444">通信OK</div>`;
-
-    beep("ok");
-    lockUntil = Date.now() + OK_LOCK_MS;
-
+    lockUntil=Date.now()+3500;
   }catch(e){
-    msg.textContent = "通信失敗。もう一度かざしてね";
-    sub.textContent = (e?.message || String(e)); // ★ここに原因が出る
-    beep("ng");
-    lockUntil = Date.now() + FAIL_LOCK_MS;
-
+    msg.textContent="通信失敗。もう一度かざしてね";
+    sub.textContent=e.message||e;
+    playSound("OUT");
+    lockUntil=Date.now()+1500;
   }finally{
-    setTimeout(()=>{ sending = false; }, 400);
+    setTimeout(()=>sending=false,400);
   }
 }
 
+/******** Loop ********/
+function loop(){
+  if(Date.now()<lockUntil){ requestAnimationFrame(loop); return; }
+  msg.textContent="QRをかざしてください"; sub.textContent="";
+  const raw=readQR();
+  if(raw) send(raw.trim());
+  setTimeout(()=>requestAnimationFrame(loop),120);
+}
 
-    /********************
-     * スキャンループ
-     ********************/
-    function loop(){
-      const now = Date.now();
-
-      // ロック中は表示維持（スキャン停止）
-      if(now < lockUntil){
-        requestAnimationFrame(loop);
-        return;
-      }
-
-      // 通常表示に戻す
-      if(!sending && msg.textContent !== "QRをかざしてください"){
-        setScreenDefault();
-      }
-
-      const raw = readQR();
-      if(raw){
-        const id = extractId(raw);
-        if(id){
-          send(id);
-        }
-      }
-
-      setTimeout(()=>requestAnimationFrame(loop), SCAN_INTERVAL_MS);
-    }
-
-    function esc(s){
-      return String(s)
-        .replaceAll("&","&amp;")
-        .replaceAll("<","&lt;")
-        .replaceAll(">","&gt;")
-        .replaceAll('"',"&quot;")
-        .replaceAll("'","&#39;");
-    }
-
-    /********************
-     * 起動
-     ********************/
-    (async ()=>{
-      try{
-        if(typeof jsQR !== "function"){
-          msg.textContent = "QRライブラリが読み込めません";
-          return;
-        }
-        await startCamera();
-        requestAnimationFrame(loop);
-      }catch(e){
-        msg.textContent = "カメラ起動に失敗（許可を確認）";
-        sub.textContent = (e?.message || e);
-      }
-    })();
-  </script>
+/******** Start ********/
+(async()=>{
+  await startCamera();
+  requestAnimationFrame(loop);
+})();
+</script>
 </body>
 </html>
