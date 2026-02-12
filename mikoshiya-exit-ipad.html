@@ -225,13 +225,6 @@ async function send(raw){
   }, 800);
 }
 
-/* ========= ロック表示 ========= */
-setInterval(()=>{
-  if(lockUntil > Date.now()){
-    const sec = Math.ceil((lockUntil - Date.now())/1000);
-    msg.textContent = `受付完了。次の方どうぞ（あと ${sec} 秒）`;
-  }
-}, 500);
 </script>
 
 </body>
