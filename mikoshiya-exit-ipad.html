@@ -1,59 +1,80 @@
-async function send(raw){
+<!DOCTYPE html>
 
-  sending = true;
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ミコシヤ祭りの後</title>
 
-  // ① QRが「IDそのもの」じゃなくURLだった場合に備えてID抽出
-  let id = (raw || "").trim();
-  try{
-    if(id.startsWith("http")){
-      const u = new URL(id);
-      id = (u.searchParams.get("id") || "").trim() || id; // id= があればそれを使う
-    }
-  }catch(e){}
+<style>
+body{text-align:center;font-family:sans-serif;background:#f4f4f4;}
+h1{margin-top:20px;}
+h2{color:#ff4d4d;}
+video{width:90%;max-width:480px;border-radius:20px;border:5px solid #ff4d4d;}
+#msg{font-size:20px;margin:15px;}
+button{padding:14px 20px;border-radius:10px;border:none;background:#333;color:#fff;font-size:16px;}
+</style>
 
-  msg.textContent = id + " さん 祭りの後送信中...";
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 
-  try{
-    // ② scriptUrl に ? がある/ない どっちでも壊れないようにする
-    const sep = scriptUrl.includes("?") ? "&" : "?";
+</head>
 
-    const url =
-      scriptUrl + sep +
-      "id=" + encodeURIComponent(id) +
-      "&mode=" + encodeURIComponent(mode) +
-      "&token=" + encodeURIComponent(token) +
-      "&device=" + encodeURIComponent(device) +
-      "&_=" + Date.now();
+<body>
 
-    const res = await fetch(url, { cache:"no-store" });
+<h1>ミコシヤ受付</h1>
+<h2>祭りの後</h2>
 
-    // ③ ここが重要：GASの返すJSONを読む（ok:false なら理由を表示）
-    const text = await res.text();
-    let data = null;
-    try{ data = JSON.parse(text); }catch(e){}
+<video id="video" playsinline></video>
 
-    if(!res.ok){
-      throw new Error("HTTP " + res.status);
-    }
-    if(!data || data.ok !== true){
-      const m = (data && data.message) ? data.message : text;
-      throw new Error(m);
-    }
+<div id="msg">QRをかざしてください</div>
 
-    msg.textContent = id + " さん 祭りの後OK！";
-    lockUntil = Date.now() + OK_LOCK_MS;
+<script>
+const scriptUrl="https://script.google.com/macros/s/AKfycbywmQgLy6v4yePkAnQb1RBbMjsw2cRPLSxBv2SnXSC10FGcJDRr9KzkEtIciGz2dL-f5Q/exec";
+const token="MIKOSHIYA_2026";
+const device="mikoshiya-ipad-exit";
+const mode="OUT";
 
-    if(audioUnlocked){
-      soundOut.currentTime = 0;
-      soundOut.play();
-    }
+const msg=document.getElementById("msg");
+const video=document.getElementById("video");
 
-  }catch(e){
-    msg.textContent = "通信失敗: " + (e.message || "unknown");
-  }
+navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:"environment"}}})
+.then(stream=>{
+video.srcObject=stream;
+video.play();
+requestAnimationFrame(scan);
+})
+.catch(()=>msg.textContent="カメラが使えません");
 
-  setTimeout(()=>{
-    sending = false;
-    requestAnimationFrame(scan);
-  },800);
+const canvas=document.createElement("canvas");
+const ctx=canvas.getContext("2d",{willReadFrequently:true});
+
+function scan(){
+if(!video.videoWidth)return requestAnimationFrame(scan);
+
+canvas.width=video.videoWidth;
+canvas.height=video.videoHeight;
+ctx.drawImage(video,0,0);
+const img=ctx.getImageData(0,0,canvas.width,canvas.height);
+
+const code=jsQR(img.data,img.width,img.height);
+if(code)send(code.data);
+
+requestAnimationFrame(scan);
 }
+
+async function send(id){
+msg.textContent=id+" 送信中...";
+
+try{
+const url=scriptUrl+"?id="+encodeURIComponent(id)+"&mode="+mode+"&token="+token+"&device="+device;
+const res=await fetch(url);
+if(!res.ok)throw new Error("HTTP "+res.status);
+msg.textContent=id+" OK！";
+}catch(e){
+msg.textContent="通信失敗:"+e.message;
+}
+}
+</script>
+
+</body>
+</html>
