@@ -1,161 +1,44 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-<title>ミコシヤ祭りの後</title>
-
-<style>
-body{
-  text-align:center;
-  font-family:sans-serif;
-  background:#f4f4f4;
-}
-
-h1{ margin-top:20px; }
-h2{ color:#ff4d4d; }
-
-video{
-  width:90%;
-  max-width:480px;
-  border-radius:20px;
-  border:5px solid #ff4d4d;
-}
-
-#msg{
-  font-size:20px;
-  margin:15px;
-}
-
-button{
-  padding:14px 20px;
-  border-radius:10px;
-  border:none;
-  background:#333;
-  color:#fff;
-  font-size:16px;
-}
-</style>
-
-<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
-
-</head>
-<body>
-
-<h1>ミコシヤ受付</h1>
-<h2>祭りの後</h2>
-
-<video id="video" playsinline></video>
-<div id="msg">QRをかざしてください</div>
-<button id="enableSound">🔊 音を有効にする</button>
-
-<script>
-
-/* ===== 設定 ===== */
-const scriptUrl = "ここにGASのURL";
-const token     = "MIKOSHIYA_2026";
-const device    = "mikoshiya-ipad-exit";
-const mode      = "OUT";
-
-/* ===== DOM ===== */
-const msg       = document.getElementById("msg");
-const video     = document.getElementById("video");
-const enableBtn = document.getElementById("enableSound");
-
-/* ===== 音 ===== */
-const soundOut = new Audio("out.mp3");
-let audioUnlocked = false;
-
-enableBtn.addEventListener("click", async () => {
-  try{
-    await soundOut.play();
-    soundOut.pause();
-    soundOut.currentTime = 0;
-    audioUnlocked = true;
-    enableBtn.style.display = "none";
-    msg.textContent = "音OK！QRをかざしてね";
-  }catch(e){
-    msg.textContent = "音の有効化に失敗。もう一度タップしてね";
-  }
-});
-
-/* ===== ロック制御 ===== */
-const OK_LOCK_MS = 20000;
-let lockUntil = 0;
-let sending   = false;
-
-/* ===== カメラ起動 ===== */
-navigator.mediaDevices.getUserMedia({
-  video:{ facingMode:{ ideal:"environment" } }
-})
-.then(stream=>{
-  video.srcObject = stream;
-  video.play();
-  requestAnimationFrame(scan);
-})
-.catch(()=>{
-  msg.textContent = "カメラが使えません";
-});
-
-/* ===== QR読み取り ===== */
-const canvas = document.createElement("canvas");
-const ctx = canvas.getContext("2d", { willReadFrequently: true });
-
-function scan(){
-
-  if(sending || Date.now() < lockUntil){
-    requestAnimationFrame(scan);
-    return;
-  }
-
-  if(typeof jsQR !== "function"){
-    msg.textContent = "QRライブラリ未読込";
-    requestAnimationFrame(scan);
-    return;
-  }
-
-  if(!video.videoWidth || !video.videoHeight){
-    requestAnimationFrame(scan);
-    return;
-  }
-
-  canvas.width  = video.videoWidth;
-  canvas.height = video.videoHeight;
-
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-
-  const code = jsQR(imageData.data, imageData.width, imageData.height, {
-    inversionAttempts: "attemptBoth"
-  });
-
-  if(code && code.data){
-    send(code.data.trim());
-    return;
-  }
-
-  requestAnimationFrame(scan);
-}
-
-/* ===== 送信 ===== */
-async function send(id){
+async function send(raw){
 
   sending = true;
+
+  // ① QRが「IDそのもの」じゃなくURLだった場合に備えてID抽出
+  let id = (raw || "").trim();
+  try{
+    if(id.startsWith("http")){
+      const u = new URL(id);
+      id = (u.searchParams.get("id") || "").trim() || id; // id= があればそれを使う
+    }
+  }catch(e){}
+
   msg.textContent = id + " さん 祭りの後送信中...";
 
   try{
+    // ② scriptUrl に ? がある/ない どっちでも壊れないようにする
+    const sep = scriptUrl.includes("?") ? "&" : "?";
 
     const url =
-      scriptUrl +
-      "?id=" + encodeURIComponent(id) +
-      "&mode=" + mode +
+      scriptUrl + sep +
+      "id=" + encodeURIComponent(id) +
+      "&mode=" + encodeURIComponent(mode) +
       "&token=" + encodeURIComponent(token) +
       "&device=" + encodeURIComponent(device) +
       "&_=" + Date.now();
 
-    const res = await fetch(url,{ cache:"no-store" });
-    if(!res.ok) throw new Error();
+    const res = await fetch(url, { cache:"no-store" });
+
+    // ③ ここが重要：GASの返すJSONを読む（ok:false なら理由を表示）
+    const text = await res.text();
+    let data = null;
+    try{ data = JSON.parse(text); }catch(e){}
+
+    if(!res.ok){
+      throw new Error("HTTP " + res.status);
+    }
+    if(!data || data.ok !== true){
+      const m = (data && data.message) ? data.message : text;
+      throw new Error(m);
+    }
 
     msg.textContent = id + " さん 祭りの後OK！";
     lockUntil = Date.now() + OK_LOCK_MS;
@@ -166,7 +49,7 @@ async function send(id){
     }
 
   }catch(e){
-    msg.textContent = "通信失敗。もう一度かざしてね";
+    msg.textContent = "通信失敗: " + (e.message || "unknown");
   }
 
   setTimeout(()=>{
@@ -174,15 +57,3 @@ async function send(id){
     requestAnimationFrame(scan);
   },800);
 }
-
-/* ===== ロック表示 ===== */
-setInterval(()=>{
-  if(lockUntil > Date.now()){
-    const sec = Math.ceil((lockUntil - Date.now())/1000);
-    msg.textContent = "受付完了。次の方どうぞ（あと " + sec + " 秒）";
-  }
-},500);
-
-</script>
-</body>
-</html>
