@@ -195,7 +195,14 @@ async function send(raw){
     try{ data = JSON.parse(text); }catch(_){}
 
     if(data && data.ok === true){
-      msg.textContent = `${id} さん OK！`;
+      
+     msg.innerHTML =
+  "<div style='font-size:28px;font-weight:bold'>" + id + " さん</div>" +
+  "<div style='font-size:18px;margin-top:5px'>ありがとうございました</div>" +
+  "<div style='font-size:24px;margin-top:10px'>利用時間：" + data.minutes + " 分</div>" +
+  "<div style='font-size:36px;color:#ff4d4d;margin-top:10px'>料金：" + data.amount + " 円</div>"; 
+
+      
       lockUntil = Date.now() + OK_LOCK_MS;
 
       if(audioUnlocked){
