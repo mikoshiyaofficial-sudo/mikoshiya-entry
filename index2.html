@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>ミコシヤ受付 v3</title>
+
+  <!-- jsQR -->
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+
+  <style>
+    :root{
+      --bg:#f4f4f4;
+      --red:#d44747;
+      --text:#111;
+      --muted:#666;
+    }
+    body{
+      margin:0;
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans JP",sans-serif;
+      text-align:center;
+      background:var(--bg);
+      color:var(--text);
+    }
+    header{ padding:20px 12px 8px; }
+    h1{ margin:0; font-size:40px; font-weight:900; letter-spacing:.02em; }
+    h2{ margin:10px 0 0; font-size:34px; font-weight:1000; color:var(--red); }
+
+    .frame{
+      width:min(92vw, 980px);
+      aspect-ratio: 4 / 3;
+      margin:14px auto 10px;
+      border:6px solid var(--red);
+      border-radius:16px;
+      overflow:hidden;
+      background:#111;
+      box-sizing:border-box;
+    }
+    video{
+      width:100%;
+      height:100%;
+      object-fit:cover;
+      display:block;
+    }
+
+    #msg{
+      width:min(92vw, 980px);
+      margin:10px auto 0;
+      min-height:56px;
+      font-size:30px;
+      font-weight:900;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+    }
+    #sub{
+      width:min(92vw, 980px);
+      margin:4px auto 0;
+      min-height:28px;
+      font-size:18px;
+      font-weight:800;
+      color:var(--muted);
+    }
+
+    #enableSound{
+      margin:14px auto 8px;
+      padding:16px 18px;
+      font-size:22px;
+      font-weight:900;
+      border:0;
+      border-radius:14px;
+      background:#111;
+      color:#fff;
+      width:min(70vw, 520px);
+    }
+    #enableSound[disabled]{ opacity:.55; }
+
+    #ver{
+      position:fixed;
+      right:10px;
+      top:10px;
+      font-size:12px;
+      color:#888;
+      font-weight:800;
+    }
+
+    /* ここを block にするとデバッグ表示 */
+    #debug{
+      display:none;
+      width:min(92vw, 980px);
+      margin:8px auto 16px;
+      font-size:12px;
+      color:#666;
+      word-break:break-all;
+      text-align:left;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="ver">v3</div>
+
+  <header>
+    <h1>ミコシヤ受付</h1>
+    <h2>自動 入退室</h2>
+  </header>
+
+  <div class="frame">
+    <video id="video" playsinline muted></video>
+  </div>
+
+  <div id="msg">QRをかざしてください</div>
+  <div id="sub"></div>
+
+  <button id="enableSound">🔊 音を有効にする</button>
+  <div id="debug"></div>
+
+  <script>
+    /********************
+     * 設定（ここだけ変える）
+     ********************/
+    const scriptUrl = "https://script.google.com/macros/s/AKfycbzpIuZ3HQus23p5Fz4QiQDqCUweTcYFWT4loaF9lFPzdP2qpBu0Cfvb58jkN-MD3bZkrA/exec";  // 例: https://script.google.com/macros/s/XXXX/exec
+    const token  = "MIKOSHIYA_2026";
+    const device = "mikoshiya-ipad-v3";
+
+    /********************
+     * 動作パラメータ
+     ********************/
+    const OK_LOCK_MS       = 4500;    // 成功表示してる時間（入室/退室）
+    const FAIL_LOCK_MS     = 1600;    // 失敗表示
+    const SCAN_INTERVAL_MS = 120;     // スキャン間隔
+    const DUP_GUARD_MS     = 20000;   // 20秒 同じQR連打防止（完全版）
+    const QR_CROP          = 1.0;     // 0.65〜1.0（重い/読まない時だけ0.8とかに）
+
+    /********************
+     * DOM
+     ********************/
+    const video = document.getElementById("video");
+    const msg   = document.getElementById("msg");
+    const sub   = document.getElementById("sub");
+    const btnSound = document.getElementById("enableSound");
+    const debug = document.getElementById("debug");
+
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d", { willReadFrequently:true });
+
+    /********************
+     * 状態
+     ********************/
+    let sending = false;
+    let lockUntil = 0;
+    let lastId = "";
+    let lastIdAt = 0;
+
+    /********************
+     * 音（iPadでも確実な AudioContext）
+     ********************/
+    let audioCtx = null;
+    let soundEnabled = false;
+
+    function beep(type="ok"){
+      if(!soundEnabled || !audioCtx) return;
+
+      const now = audioCtx.currentTime;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+
+      // ok: 高め / ng: 低め
+      osc.frequency.value = (type==="ok") ? 880 : 220;
+      osc.type = "sine";
+
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(0.25, now + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.16);
+
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+
+      osc.start(now);
+      osc.stop(now + 0.17);
+    }
+
+    btnSound.addEventListener("click", async ()=>{
+      try{
+        if(!audioCtx){
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        await audioCtx.resume();
+        soundEnabled = true;
+        btnSound.textContent = "✅ 音 有効";
+        btnSound.disabled = true;
+        beep("ok");
+      }catch(e){
+        debug.style.display="block";
+        debug.textContent = "AUDIO ERROR: " + (e?.message || e);
+      }
+    });
+
+    /********************
+     * カメラ起動
+     ********************/
+    async function startCamera(){
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: "environment",
+          width:  { ideal: 1280 },
+          height: { ideal: 720 }
+        },
+        audio:false
+      });
+      video.srcObject = stream;
+      await video.play();
+    }
+
+    /********************
+     * QR 読み取り
+     ********************/
+    function readQR(){
+      if(video.readyState < 2) return null;
+
+      const w0 = video.videoWidth, h0 = video.videoHeight;
+      if(!w0 || !h0) return null;
+
+      // 中央切り抜き（重さ/読みやすさ調整）
+      const crop = Math.max(0.4, Math.min(1.0, QR_CROP));
+      const cw = Math.floor(w0 * crop);
+      const ch = Math.floor(h0 * crop);
+      const sx = Math.floor((w0 - cw) / 2);
+      const sy = Math.floor((h0 - ch) / 2);
+
+      canvas.width = cw;
+      canvas.height = ch;
+      ctx.drawImage(video, sx, sy, cw, ch, 0, 0, cw, ch);
+
+      const img = ctx.getImageData(0,0,cw,ch);
+      const code = jsQR(img.data, cw, ch, { inversionAttempts:"attemptBoth" });
+      return code ? (code.data || "") : null;
+    }
+
+    function extractId(text){
+      text = String(text||"").trim();
+      if(!text) return "";
+
+      // 1) IDだけのQR
+      if (/^[A-Za-z0-9_-]{3,}$/.test(text) && !text.includes("http")) return text;
+
+      // 2) URL型 (?id=)
+      try{
+        const u = new URL(text);
+        const id = (u.searchParams.get("id") || u.searchParams.get("ID") || "").trim();
+        if(id) return id;
+      }catch(_){}
+
+      // 3) 念のため regex
+      const m = text.match(/[?&]id=([^&]+)/i);
+      return m ? decodeURIComponent(m[1]).trim() : "";
+    }
+
+    function setScreenDefault(){
+      msg.textContent = "QRをかざしてください";
+      sub.textContent = "";
+    }
+
+    function showError(main, detail){
+      msg.textContent = main;
+      sub.textContent = detail || "";
+      beep("ng");
+      lockUntil = Date.now() + FAIL_LOCK_MS;
+    }
+
+    function showInOk(id){
+      msg.innerHTML = `<span style="font-size:38px;font-weight:1000">${esc(id)} さん</span>`;
+      sub.innerHTML = `<div style="font-size:20px;font-weight:900;color:#444">ありがとうございます　入室OK</div>`;
+      beep("ok");
+      lockUntil = Date.now() + OK_LOCK_MS;
+    }
+
+    function showOutOk(id, minutes, amount){
+      msg.innerHTML =
+        `<div style="font-size:34px;font-weight:1000">${esc(id)} さん</div>`;
+      sub.innerHTML =
+        `<div style="font-size:22px;font-weight:900;color:#444;margin-top:4px">利用時間：${minutes} 分</div>` +
+        `<div style="font-size:44px;font-weight:1000;color:#d44747;margin-top:6px">料金：${amount} 円</div>`;
+      beep("ok");
+      lockUntil = Date.now() + OK_LOCK_MS;
+    }
+
+    /********************
+     * 送信（v3：mode無し）
+     ********************/
+    async function send(id){
+      const now = Date.now();
+      if(sending || now < lockUntil) return;
+
+      // 20秒 同一IDガード
+      if(id === lastId && (now - lastIdAt) < DUP_GUARD_MS) return;
+
+      lastId = id;
+      lastIdAt = now;
+
+      sending = true;
+      msg.textContent = "通信中…";
+      sub.textContent = "";
+
+      try{
+        const url = `${scriptUrl}?id=${encodeURIComponent(id)}&token=${encodeURIComponent(token)}&device=${encodeURIComponent(device)}&t=${Date.now()}`;
+        // debug.style.display="block"; debug.textContent = url;
+
+        const res = await fetch(url, { cache:"no-store" });
+        const data = await res.json();
+
+        if(!res.ok) throw new Error(`HTTP ${res.status}`);
+        if(!data || data.ok !== true) throw new Error(data?.message || "unknown");
+
+        // GAS v3: action が IN/OUT
+        if(data.action === "IN"){
+          showInOk(id);
+        }else if(data.action === "OUT"){
+          showOutOk(id, Number(data.minutes ?? 0), Number(data.amount ?? 0));
+        }else{
+          // 予期しない場合でも表示
+          showError("通信結果が不明", JSON.stringify(data));
+        }
+
+      }catch(e){
+        showError("通信失敗。もう一度かざしてね", (e?.message || e));
+      }finally{
+        setTimeout(()=>{ sending = false; }, 350);
+      }
+    }
+
+    /********************
+     * スキャンループ
+     ********************/
+    function loop(){
+      const now = Date.now();
+
+      // ロック中は表示維持（スキャン停止）
+      if(now < lockUntil){
+        requestAnimationFrame(loop);
+        return;
+      }
+
+      // 通常表示に戻す
+      if(!sending && msg.textContent !== "QRをかざしてください"){
+        setScreenDefault();
+      }
+
+      const raw = readQR();
+      if(raw){
+        const id = extractId(raw);
+        if(id){
+          send(id);
+        }
+      }
+
+      setTimeout(()=>requestAnimationFrame(loop), SCAN_INTERVAL_MS);
+    }
+
+    function esc(s){
+      return String(s)
+        .replaceAll("&","&amp;")
+        .replaceAll("<","&lt;")
+        .replaceAll(">","&gt;")
+        .replaceAll('"',"&quot;")
+        .replaceAll("'","&#39;");
+    }
+
+    /********************
+     * 起動
+     ********************/
+    (async ()=>{
+      try{
+        if(typeof jsQR !== "function"){
+          msg.textContent = "QRライブラリが読み込めません";
+          return;
+        }
+        await startCamera();
+        requestAnimationFrame(loop);
+      }catch(e){
+        msg.textContent = "カメラ起動に失敗（許可を確認）";
+        sub.textContent = (e?.message || e);
+      }
+    })();
+  </script>
+</body>
+</html>
