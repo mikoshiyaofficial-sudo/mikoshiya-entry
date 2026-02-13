@@ -355,10 +355,15 @@ function loop(){
 }
 
 /******** Start ********/
-(async()=>{
-  await startCamera();
-  requestAnimationFrame(loop);
+(async ()=>{
+  try{
+    await startCamera();
+    requestAnimationFrame(loop);
+  }catch(e){
+    // startCamera内で表示済み
+  }
 })();
+
 </script>
 </body>
 </html>
