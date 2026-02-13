@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>ミコシヤ受付 v3 - 自動入退室</title>
 
-  <!-- jsQR -->
+  <!-- jsQR（QR解析ライブラリ） -->
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 
   <style>
@@ -25,81 +25,52 @@
     h1{ margin:0; font-size:40px; font-weight:900; letter-spacing:.02em; }
     h2{ margin:10px 0 0; font-size:30px; font-weight:1000; color:var(--red); }
 
-  .frame{
-  width:min(92vw, 980px);
-  aspect-ratio: 4 / 3;
-  margin:14px auto 10px;
-  border:6px solid var(--red);
-  border-radius:16px;
-  overflow:hidden;
-  background:#111;
-  box-sizing:border-box;
-  position: relative;
-}
+    .frame{
+      width:min(92vw, 980px);
+      aspect-ratio: 4 / 3;
+      margin:14px auto 10px;
+      border:6px solid var(--red);
+      border-radius:16px;
+      overflow:hidden;
+      background:#111;
+      box-sizing:border-box;
+      position:relative;
+    }
 
-/* videoがタップを邪魔しないように */
-#video{
-  width:100%;
-  height:100%;
-  object-fit:cover;
-  pointer-events:none;
-}
-
-/* ボタンは最前面 */
-#enableSound{
-  position: relative;
-  z-index: 9999;
-}
-#enableSound[disabled]{ opacity:.55; }
-
+    /* videoがタップを邪魔しないようにする */
+    #video{
+      width:100%;
+      height:100%;
+      object-fit:cover;
+      pointer-events:none;
+    }
 
     #msg{
-      width:min(92vw, 980px);
-      margin:10px auto 0;
-      min-height:54px;
-      font-size:30px;
+      font-size:18px;
       font-weight:900;
-      display:flex;
-      align-items:center;
-      justify-content:center;
+      margin-top:6px;
     }
     #sub{
-      width:min(92vw, 980px);
-      margin:4px auto 0;
-      min-height:28px;
-      font-size:18px;
+      font-size:16px;
       font-weight:800;
-      color:#666;
+      color:#444;
+      margin-top:4px;
+      min-height:24px;
     }
 
     #enableSound{
-  margin:14px auto 8px;
-  padding:16px 18px;
-  font-size:22px;
-  font-weight:900;
-  border:0;
-  border-radius:14px;
-  background:#111;
-  color:#fff;
-  width:min(70vw, 520px);
-
-  position: relative;
-  z-index: 9999;
-}
-   video{
-  pointer-events: none;
-}
-#video{
-  position: relative;
-  z-index: 1;
-  pointer-events: none;
-}
-
-#enableSound{
-  position: relative;
-  z-index: 9999;
-}
-
+      margin:14px auto 8px;
+      padding:16px 18px;
+      font-size:22px;
+      font-weight:900;
+      border:0;
+      border-radius:14px;
+      background:#111;
+      color:#fff;
+      width:min(70vw, 520px);
+      position:relative;
+      z-index:9999;
+    }
     #enableSound[disabled]{ opacity:.55; }
 
     .saleRow{
@@ -131,7 +102,7 @@
       font-weight:800;
     }
 
-    /* デバッグ：必要なら display:block に */
+    /* デバッグ（必要なら display:block に） */
     #debug{
       display:none;
       width:min(92vw, 980px);
@@ -207,10 +178,10 @@
 
     /********************
      * 効果音（太鼓 & 花火）
-     * iPad対策：ユーザー操作でunlock
+     * iOS対策：ユーザー操作でunlock
      ********************/
-    const soundTaiko   = new Audio("https://cdn.pixabay.com/download/audio/2022/03/10/audio_2a2d7e0e86.mp3?filename=drum-hit-1-19943.mp3");
-    const soundHanabi  = new Audio("https://cdn.pixabay.com/download/audio/2022/03/15/audio_2f5c0a6a66.mp3?filename=success-1-6297.mp3");
+    const soundTaiko  = new Audio("https://cdn.pixabay.com/download/audio/2022/03/10/audio_2a2d7e0e86.mp3?filename=drum-hit-1-19943.mp3");
+    const soundHanabi = new Audio("https://cdn.pixabay.com/download/audio/2022/03/15/audio_2f5c0a6a66.mp3?filename=success-1-6297.mp3");
     soundTaiko.preload = "auto";
     soundHanabi.preload = "auto";
     soundTaiko.volume = 0.9;
@@ -219,7 +190,7 @@
     let soundEnabled = false;
 
     async function unlockSound(){
-      // iOS: play/pauseで解禁
+      // iOS: いったんplay→pauseで解禁
       soundTaiko.currentTime = 0;
       await soundTaiko.play();
       soundTaiko.pause();
@@ -249,7 +220,6 @@
 
     function playNG(){
       if(!soundEnabled) return;
-      // NGは太鼓だけ（控えめ）
       try{
         soundTaiko.currentTime = 0;
         soundTaiko.play().catch(()=>{});
@@ -374,7 +344,6 @@
         if(!res.ok) throw new Error(`HTTP ${res.status}`);
         if(!data || data.ok !== true) throw new Error(data?.message || "unknown");
 
-        // GAS v3: action が IN / OUT を返す想定
         if(data.action === "IN"){
           showInOk(id);
           playTaikoAndHanabi();
