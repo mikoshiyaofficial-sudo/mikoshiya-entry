@@ -116,6 +116,7 @@
 <div id="sub"></div>
 
 <button id="enableSound">🔊 音を有効にする</button>
+<div id="debug" style="display:none; width:min(92vw, 980px); margin:8px auto 16px; font-size:12px; color:#666; word-break:break-all; text-align:left;"></div>
 
 <script>
 /******** 設定 ********/
@@ -132,6 +133,7 @@ const video=document.getElementById("video");
 const msg=document.getElementById("msg");
 const sub=document.getElementById("sub");
 const btnSound=document.getElementById("enableSound");
+const debug = document.getElementById("debug");
 
 /******** Audio ********/
 let audioCtx=null, soundOn=false;
@@ -201,35 +203,92 @@ function readQR(){
 
 /******** Send ********/
 async function send(id){
-  if(sending||Date.now()<lockUntil)return;
-  if(id===lastId && Date.now()-lastAt<20000)return;
-  lastId=id; lastAt=Date.now();
-  sending=true;
-  msg.textContent="通信中…"; sub.textContent="";
+  if(sending || Date.now() < lockUntil) return;
+
+  // 20秒 同一IDガード
+  if(id === lastId && (Date.now() - lastAt) < 20000) return;
+  lastId = id; lastAt = Date.now();
+
+  sending = true;
+  msg.textContent = "通信中…";
+  sub.textContent = "";
+
+  // ★ここ重要：タイムアウトを付ける（8秒）
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+
+  // ★キャッシュ回避（iPad/Safariで効く）
+  const url =
+    `${scriptUrl}?id=${encodeURIComponent(id)}` +
+    `&token=${encodeURIComponent(token)}` +
+    `&device=${encodeURIComponent(device)}` +
+    `&t=${Date.now()}`;
+
+  // デバッグ表示（画面に出したくなければコメントアウトでOK）
+  if (typeof debug !== "undefined" && debug) {
+    debug.style.display = "block";
+    debug.textContent = url;
+  }
 
   try{
-    const url=`${scriptUrl}?id=${encodeURIComponent(id)}&token=${token}&device=${device}`;
-    const res=await fetch(url,{cache:"no-store"});
-    const data=await res.json();
-    if(!data.ok) throw new Error(data.message);
+    const res = await fetch(url, {
+      cache: "no-store",
+      redirect: "follow",
+      signal: controller.signal
+    });
 
-    if(data.action==="IN"){
-      msg.textContent=`${id} さん`;
-      sub.textContent="祭りに参加 🎉";
-      flash("white"); firework(); playSound("IN");
-    }else{
-      msg.textContent=`${id} さん`;
-      sub.textContent=`退室 OK　${data.minutes}分 / ${data.amount}円`;
-      flash("rgba(255,0,0,.4)"); playSound("OUT");
+    // ★JSONじゃない時のために text を先に読む
+    const text = await res.text();
+
+    // HTTPエラー（403/404/500とか）
+    if(!res.ok){
+      throw new Error(`HTTP ${res.status}: ${text.slice(0,200)}`);
     }
-    lockUntil=Date.now()+3500;
+
+    // JSONパース（失敗したら中身を見せる）
+    let data;
+    try{
+      data = JSON.parse(text);
+    }catch(e){
+      throw new Error(`JSONではない返事: ${text.slice(0,200)}`);
+    }
+
+    if(!data || data.ok !== true){
+      throw new Error(data?.message || "unknown");
+    }
+
+    // ===== ここから成功表示（あなたの v3 仕様） =====
+    if(data.action === "IN"){
+      msg.textContent = `${id} さん`;
+      sub.textContent = "祭りに参加 🎉";
+      flash("white"); firework(); playSound("IN");
+    }else if(data.action === "OUT"){
+      msg.textContent = `${id} さん`;
+      sub.textContent = `退室 OK　${data.minutes ?? ""}分 / ${data.amount ?? ""}円`;
+      flash("rgba(255,0,0,.35)"); playSound("OUT");
+    }else{
+      msg.textContent = `${id} さん`;
+      sub.textContent = `action不明: ${JSON.stringify(data)}`;
+      playSound("OUT");
+    }
+
+    lockUntil = Date.now() + 3500;
+
   }catch(e){
-    msg.textContent="通信失敗。もう一度かざしてね";
-    sub.textContent=e.message||e;
+    // AbortController のタイムアウト
+    if(e && (e.name === "AbortError")){
+      msg.textContent = "通信タイムアウト（8秒）";
+      sub.textContent = "GASが返事してない/URL違い/ネット不調の可能性";
+    }else{
+      msg.textContent = "通信失敗。もう一度かざしてね";
+      sub.textContent = (e?.message || String(e));
+    }
     playSound("OUT");
-    lockUntil=Date.now()+1500;
+    lockUntil = Date.now() + 1800;
+
   }finally{
-    setTimeout(()=>sending=false,400);
+    clearTimeout(timer);
+    setTimeout(()=> sending=false, 300);
   }
 }
 
