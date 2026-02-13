@@ -1,4 +1,4 @@
-<!doctype html>
+ <!doctype html>
 <html lang="ja">
 <head>
   <meta charset="utf-8" />
@@ -102,9 +102,9 @@
       font-weight:800;
     }
 
-    /* デバッグ（必要なら display:block に） */
+    /* デバッグ表示（常に出す） */
     #debug{
-      display:none;
+      display:block;
       width:min(92vw, 980px);
       margin:8px auto 16px;
       font-size:12px;
@@ -132,7 +132,6 @@
 
   <button id="enableSound">🔊 音を有効にする</button>
 
-  <!-- 物販（必要なときだけ使う） -->
   <div class="saleRow">
     <button class="saleBtn" id="saleDrink">物販：ドリンク（例 150円）</button>
     <button class="saleBtn" id="saleSnack">物販：お菓子（例 100円）</button>
@@ -177,8 +176,7 @@
     let lastIdAt = 0;
 
     /********************
-     * 効果音（太鼓 & 花火）
-     * iOS対策：ユーザー操作でunlock
+     * 効果音
      ********************/
     const soundTaiko  = new Audio("https://cdn.pixabay.com/download/audio/2022/03/10/audio_2a2d7e0e86.mp3?filename=drum-hit-1-19943.mp3");
     const soundHanabi = new Audio("https://cdn.pixabay.com/download/audio/2022/03/15/audio_2f5c0a6a66.mp3?filename=success-1-6297.mp3");
@@ -189,8 +187,16 @@
 
     let soundEnabled = false;
 
+    // iPad Safari対策：無音→本音源を一度だけ鳴らして解禁
     async function unlockSound(){
-      // iOS: いったんplay→pauseで解禁
+      const silentWav = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=";
+      const silent = new Audio(silentWav);
+      silent.volume = 0;
+      await silent.play();
+
+      soundTaiko.volume = 0.001;
+      soundHanabi.volume = 0.001;
+
       soundTaiko.currentTime = 0;
       await soundTaiko.play();
       soundTaiko.pause();
@@ -200,6 +206,9 @@
       await soundHanabi.play();
       soundHanabi.pause();
       soundHanabi.currentTime = 0;
+
+      soundTaiko.volume = 0.9;
+      soundHanabi.volume = 0.9;
 
       soundEnabled = true;
       btnSound.textContent = "✅ 音 有効";
@@ -228,11 +237,14 @@
 
     btnSound.addEventListener("click", async ()=>{
       try{
+        debug.textContent = "AUDIO: try unlock...";
         await unlockSound();
-        playTaikoAndHanabi(); // 解禁確認
+        debug.textContent = "AUDIO: unlocked ✅";
+        playTaikoAndHanabi();
       }catch(e){
-        // debug.style.display="block";
-        debug.textContent = "AUDIO ERROR: " + (e?.message || e);
+        debug.textContent = "AUDIO ERROR: " + (e?.name || "") + " / " + (e?.message || e);
+        msg.textContent = "音の有効化に失敗";
+        sub.textContent = "下の AUDIO ERROR を見てね";
       }
     });
 
@@ -249,7 +261,7 @@
         audio: false
       });
       video.srcObject = stream;
-      await video.play();
+      await video.play(); // ←ここは [video.play] じゃなくて video.play()
     }
 
     /********************
@@ -273,17 +285,14 @@
       text = String(text||"").trim();
       if(!text) return "";
 
-      // 1) IDだけ
       if (/^[A-Za-z0-9_-]{3,}$/.test(text) && !text.includes("http")) return text;
 
-      // 2) URL (?id=)
       try{
         const u = new URL(text);
         const id = (u.searchParams.get("id") || u.searchParams.get("ID") || "").trim();
         if(id) return id;
       }catch(_){}
 
-      // 3) 予備
       const m = text.match(/[?&]id=([^&]+)/i);
       return m ? decodeURIComponent(m[1]).trim() : "";
     }
@@ -293,7 +302,7 @@
      ********************/
     function showInOk(id){
       msg.innerHTML = `<span style="font-size:36px;font-weight:1000">${esc(id)} さん</span>`;
-      sub.innerHTML = `<div style="font-size:20px;font-weight:900;color:#444">ありがとうございます　入室OK</div>`;
+      sub.innerHTML = `<div style="font-size:20px;font-weight:900;color:#444">ありがとうございます 入室OK</div>`;
     }
     function showOutOk(id, minutes, amount){
       msg.innerHTML = `<div style="font-size:34px;font-weight:1000">${esc(id)} さん</div>`;
@@ -335,7 +344,7 @@
         `?id=${encodeURIComponent(id)}` +
         `&token=${encodeURIComponent(token)}` +
         `&device=${encodeURIComponent(device)}` +
-        `&t=${Date.now()}`; // キャッシュ避け
+        `&t=${Date.now()}`;
 
       try{
         const res = await fetch(url, { cache:"no-store" });
@@ -445,12 +454,14 @@
      ********************/
     (async ()=>{
       try{
+        debug.textContent = "BOOT: starting camera...";
         await startCamera();
+        debug.textContent = "BOOT: camera OK / press sound button";
         requestAnimationFrame(loop);
       }catch(e){
         msg.textContent = "カメラ起動に失敗（許可を確認）";
         sub.textContent = (e?.message || e);
-        // debug.style.display="block"; debug.textContent = "CAMERA ERROR: " + (e?.message || e);
+        debug.textContent = "CAMERA ERROR: " + (e?.name || "") + " / " + (e?.message || e);
       }
     })();
   </script>
