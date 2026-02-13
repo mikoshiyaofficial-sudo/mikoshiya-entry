@@ -62,15 +62,27 @@
     }
 
     #enableSound{
-      margin:14px auto 8px;
-      padding:16px 18px;
-      font-size:22px;
-      font-weight:900;
-      border:0;
-      border-radius:14px;
-      background:#111;
-      color:#fff;
-      width:min(70vw, 520px);
+  margin:14px auto 8px;
+  padding:16px 18px;
+  font-size:22px;
+  font-weight:900;
+  border:0;
+  border-radius:14px;
+  background:#111;
+  color:#fff;
+  width:min(70vw, 520px);
+
+  position: relative;
+  z-index: 9999;
+}
+   video{
+  pointer-events: none;
+}
+
+　video{
+  pointer-events: none;
+}
+
     }
     #enableSound[disabled]{ opacity:.55; }
 
