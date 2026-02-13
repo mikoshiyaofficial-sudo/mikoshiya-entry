@@ -1,229 +1,442 @@
 <!doctype html>
 <html lang="ja">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ミコシヤ受付 v3 - 自動入退室</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>ミコシヤ受付 v3 - 自動入退室</title>
 
-<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+  <!-- jsQR -->
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 
-<style>
-body{
-  margin:0;
-  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans JP",sans-serif;
-  text-align:center;
-  background:#f4f4f4;
-}
-h1{margin:20px 0 0;font-size:38px;font-weight:900;}
-h2{margin:8px 0 14px;font-size:26px;color:#d44747;font-weight:900;}
+  <style>
+    :root{ --bg:#f4f4f4; --red:#d44747; --text:#111; }
+    body{
+      margin:0;
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans JP",sans-serif;
+      text-align:center;
+      background:var(--bg);
+      color:var(--text);
+    }
+    header{ padding:18px 12px 6px; }
+    h1{ margin:0; font-size:40px; font-weight:900; letter-spacing:.02em; }
+    h2{ margin:10px 0 0; font-size:30px; font-weight:1000; color:var(--red); }
 
-.frame{
-  width:min(92vw,900px);
-  aspect-ratio:4/3;
-  margin:auto;
-  border:6px solid #d44747;
-  border-radius:16px;
-  overflow:hidden;
-  background:#000;
-}
-#video{
-  width:100%;
-  height:100%;
-  object-fit:cover;
-  pointer-events:none;
-}
+    /* カメラ枠 */
+    .frame{
+      width:min(92vw, 980px);
+      aspect-ratio:4/3;
+      margin:14px auto 10px;
+      border:6px solid var(--red);
+      border-radius:16px;
+      overflow:hidden;
+      background:#111;
+      box-sizing:border-box;
 
-#msg{font-size:20px;font-weight:900;margin-top:12px;}
-#sub{font-size:16px;margin-top:6px;color:#444;min-height:22px;}
+      /* ここ重要：枠がタップを奪わない */
+      pointer-events:none;
+    }
 
-#enableSound{
-  margin:16px auto;
-  padding:16px;
-  font-size:20px;
-  font-weight:900;
-  border-radius:14px;
-  border:0;
-  background:#111;
-  color:#fff;
-}
-#enableSound[disabled]{opacity:.5;}
+    /* videoもタップを奪わない */
+    #video{
+      width:100%;
+      height:100%;
+      object-fit:cover;
+      display:block;
+      pointer-events:none;
+    }
 
-.saleRow{margin-top:10px;}
-.saleBtn{
-  padding:12px 14px;
-  margin:4px;
-  font-weight:900;
-  border-radius:10px;
-  border:0;
-  background:#fff;
-}
-</style>
+    #msg{
+      width:min(92vw, 980px);
+      margin:10px auto 0;
+      min-height:44px;
+      font-size:24px;
+      font-weight:900;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+    }
+    #sub{
+      width:min(92vw, 980px);
+      margin:4px auto 0;
+      min-height:24px;
+      font-size:16px;
+      font-weight:800;
+      color:#444;
+    }
+
+    /* 音ボタン：必ずタップできる最前面 */
+    #enableSound{
+      margin:14px auto 8px;
+      padding:16px 18px;
+      font-size:22px;
+      font-weight:900;
+      border:0;
+      border-radius:14px;
+      background:#111;
+      color:#fff;
+      width:min(70vw, 520px);
+
+      position:relative;
+      z-index:999999;
+      pointer-events:auto;
+      touch-action:manipulation;
+    }
+    #enableSound[disabled]{ opacity:.55; }
+
+    .saleRow{
+      width:min(92vw, 980px);
+      margin:10px auto 0;
+      display:flex;
+      gap:10px;
+      justify-content:center;
+      flex-wrap:wrap;
+    }
+    .saleBtn{
+      padding:14px 16px;
+      font-size:18px;
+      font-weight:900;
+      border:0;
+      border-radius:12px;
+      background:#fff;
+      color:#111;
+      box-shadow:0 2px 10px rgba(0,0,0,.08);
+      pointer-events:auto;
+      touch-action:manipulation;
+    }
+    .saleBtn:active{ transform:translateY(1px); }
+
+    #ver{
+      position:fixed;
+      right:10px;
+      top:10px;
+      font-size:12px;
+      color:#888;
+      font-weight:800;
+    }
+
+    #debug{
+      display:none;
+      width:min(92vw, 980px);
+      margin:8px auto 16px;
+      font-size:12px;
+      color:#666;
+      word-break:break-all;
+      text-align:left;
+    }
+  </style>
 </head>
 
 <body>
+  <div id="ver">v3</div>
 
-<h1>ミコシヤ受付</h1>
-<h2>自動 入退室</h2>
+  <header>
+    <h1>ミコシヤ受付</h1>
+    <h2>自動 入退室</h2>
+  </header>
 
-<div class="frame">
-  <video id="video" playsinline muted></video>
-</div>
+  <div class="frame">
+    <video id="video" playsinline muted></video>
+  </div>
 
-<div id="msg">QRをかざしてください</div>
-<div id="sub"></div>
+  <div id="msg">QRをかざしてください</div>
+  <div id="sub"></div>
 
-<button id="enableSound">🔊 音を有効にする</button>
+  <!-- ここは必ず押せる -->
+  <button id="enableSound" type="button">🔊 音を有効にする</button>
 
-<div class="saleRow">
-  <button class="saleBtn" onclick="sendSale(150,'drink')">物販：ドリンク</button>
-  <button class="saleBtn" onclick="sendSale(100,'snack')">物販：お菓子</button>
-</div>
+  <div class="saleRow">
+    <button class="saleBtn" id="saleDrink" type="button">物販：ドリンク（150円）</button>
+    <button class="saleBtn" id="saleSnack" type="button">物販：お菓子（100円）</button>
+  </div>
 
-<script>
-/************ 設定 ************/
-const scriptUrl="https://script.google.com/macros/s/AKfycbyoH2eou4zXvI-O4nhIZ3p7dLRVqu8CXwiCvxyRv_At3GfafxFU-8J-KboSTmYJlG4QFg/exec";
-const token="MIKOSHIYA_2026";
-const device="mikoshiya-ipad-v3";
+  <div id="debug"></div>
 
-/************ 状態 ************/
-let sending=false;
-let lockUntil=0;
-let lastId="";
-let lastIdAt=0;
-const DUP_GUARD=20000;
+  <script>
+    /********************
+     * 設定（ここだけ変える）
+     ********************/
+    const scriptUrl = "https://script.google.com/macros/s/AKfycbyoH2eou4zXvI-O4nhIZ3p7dLRVqu8CXwiCvxyRv_At3GfafxFU-8J-KboSTmYJlG4QFg/exec";
+    const token  = "MIKOSHIYA_2026";
+    const device = "mikoshiya-ipad-v3";
 
-/************ 音 ************/
-const taiko=new Audio("https://cdn.pixabay.com/download/audio/2022/03/10/audio_2a2d7e0e86.mp3?filename=drum-hit-1-19943.mp3");
-const hanabi=new Audio("https://cdn.pixabay.com/download/audio/2022/03/15/audio_2f5c0a6a66.mp3?filename=success-1-6297.mp3");
-taiko.volume=0.9; hanabi.volume=0.9;
+    /********************
+     * 動作パラメータ
+     ********************/
+    const OK_LOCK_MS       = 3500;
+    const FAIL_LOCK_MS     = 1600;
+    const SCAN_INTERVAL_MS = 120;
+    const DUP_GUARD_MS     = 20000;
 
-let soundEnabled=false;
-document.getElementById("enableSound").onclick=async()=>{
-  try{
-    await taiko.play(); taiko.pause(); taiko.currentTime=0;
-    await hanabi.play(); hanabi.pause(); hanabi.currentTime=0;
-    soundEnabled=true;
-    enableSound.disabled=true;
-    enableSound.textContent="✅ 音 有効";
-  }catch(e){}
-};
+    const video = document.getElementById("video");
+    const msg   = document.getElementById("msg");
+    const sub   = document.getElementById("sub");
+    const btnSound = document.getElementById("enableSound");
+    const debug = document.getElementById("debug");
 
-function playOK(){
-  if(!soundEnabled)return;
-  taiko.currentTime=0;
-  taiko.play().catch(()=>{});
-  setTimeout(()=>{
-    hanabi.currentTime=0;
-    hanabi.play().catch(()=>{});
-  },180);
-}
-function playNG(){
-  if(!soundEnabled)return;
-  taiko.currentTime=0;
-  taiko.play().catch(()=>{});
-}
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d", { willReadFrequently:true });
 
-/************ カメラ ************/
-const video=document.getElementById("video");
-const canvas=document.createElement("canvas");
-const ctx=canvas.getContext("2d",{willReadFrequently:true});
+    let sending = false;
+    let lockUntil = 0;
+    let lastId = "";
+    let lastIdAt = 0;
 
-async function startCamera(){
-  const stream=await navigator.mediaDevices.getUserMedia({
-    video:{facingMode:"environment"},audio:false
-  });
-  video.srcObject=stream;
-  await video.play();
-}
+    /********************
+     * 効果音（太鼓 & 花火）
+     ********************/
+    const soundTaiko  = new Audio("https://cdn.pixabay.com/download/audio/2022/03/10/audio_2a2d7e0e86.mp3?filename=drum-hit-1-19943.mp3");
+    const soundHanabi = new Audio("https://cdn.pixabay.com/download/audio/2022/03/15/audio_2f5c0a6a66.mp3?filename=success-1-6297.mp3");
+    soundTaiko.preload = "auto";
+    soundHanabi.preload = "auto";
+    soundTaiko.volume = 0.9;
+    soundHanabi.volume = 0.9;
 
-/************ QR ************/
-function readQR(){
-  if(video.readyState<2)return null;
-  canvas.width=video.videoWidth;
-  canvas.height=video.videoHeight;
-  ctx.drawImage(video,0,0);
-  const img=ctx.getImageData(0,0,canvas.width,canvas.height);
-  const code=jsQR(img.data,canvas.width,canvas.height);
-  return code?code.data:null;
-}
-function extractId(t){
-  if(!t)return "";
-  if(/^[A-Za-z0-9_-]{3,}$/.test(t)&&!t.includes("http"))return t;
-  try{
-    const u=new URL(t);
-    return u.searchParams.get("id")||"";
-  }catch(e){}
-  return "";
-}
+    let soundEnabled = false;
 
-/************ 自動送信 ************/
-async function sendAuto(id){
-  const now=Date.now();
-  if(sending||now<lockUntil)return;
-  if(id===lastId && now-lastIdAt<DUP_GUARD)return;
-  lastId=id; lastIdAt=now;
+    async function unlockSound(){
+      // 押せてるか可視化
+      btnSound.textContent = "…有効化中";
 
-  sending=true;
-  msg.textContent="通信中…";
-  sub.textContent="";
+      // iOS: ユーザー操作中の play/pause が必要
+      soundTaiko.currentTime = 0;
+      await soundTaiko.play();
+      soundTaiko.pause();
+      soundTaiko.currentTime = 0;
 
-  try{
-    const res=await fetch(`${scriptUrl}?id=${id}&token=${token}&device=${device}&t=${Date.now()}`);
-    const data=await res.json();
+      soundHanabi.currentTime = 0;
+      await soundHanabi.play();
+      soundHanabi.pause();
+      soundHanabi.currentTime = 0;
 
-    if(!data.ok)throw new Error(data.message);
+      soundEnabled = true;
+      btnSound.textContent = "✅ 音 有効";
+      btnSound.disabled = true;
 
-    if(data.action==="IN"){
-      msg.innerHTML=`<b>${id} さん</b>`;
-      sub.textContent="入室OK";
-    }else{
-      msg.innerHTML=`<b>${id} さん</b>`;
-      sub.innerHTML=`退室OK<br>利用時間 ${data.minutes}分<br><span style="color:#d44747;font-size:26px">${data.amount}円</span>`;
+      // 解禁確認で鳴らす
+      playOK();
     }
 
-    playOK();
-    lockUntil=Date.now()+3000;
+    function playOK(){
+      if(!soundEnabled) return;
+      try{
+        soundTaiko.currentTime = 0;
+        soundTaiko.play().catch(()=>{});
+        setTimeout(()=>{
+          soundHanabi.currentTime = 0;
+          soundHanabi.play().catch(()=>{});
+        }, 180);
+      }catch(_){}
+    }
+    function playNG(){
+      if(!soundEnabled) return;
+      try{
+        soundTaiko.currentTime = 0;
+        soundTaiko.play().catch(()=>{});
+      }catch(_){}
+    }
 
-  }catch(e){
-    msg.textContent="通信失敗。もう一度かざしてね";
-    sub.textContent=e.message||"";
-    playNG();
-    lockUntil=Date.now()+1500;
-  }
-  setTimeout(()=>sending=false,300);
-}
+    // ✅ ここが確実に反応する
+    btnSound.addEventListener("click", async ()=>{
+      try{
+        await unlockSound();
+        sub.textContent = "音OK！";
+      }catch(e){
+        btnSound.textContent = "🔊 音を有効にする（もう一度）";
+        sub.textContent = "音の許可が通ってないかも";
+      }
+    }, { passive:false });
 
-/************ 物販 ************/
-async function sendSale(amount,item){
-  if(sending)return;
-  sending=true;
-  msg.textContent="通信中…";
-  try{
-    await fetch(`${scriptUrl}?action=SALE&amount=${amount}&item=${item}&token=${token}&device=${device}&t=${Date.now()}`);
-    msg.textContent="物販OK";
-    sub.textContent=`${item} ${amount}円`;
-    playOK();
-  }catch(e){
-    msg.textContent="物販失敗";
-    playNG();
-  }
-  setTimeout(()=>sending=false,300);
-}
+    /********************
+     * カメラ起動
+     ********************/
+    async function startCamera(){
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 1280 },
+          height:{ ideal: 720 }
+        },
+        audio:false
+      });
+      video.srcObject = stream;
+      await video.play();
+    }
 
-/************ ループ ************/
-function loop(){
-  const raw=readQR();
-  if(raw){
-    const id=extractId(raw);
-    if(id)sendAuto(id);
-  }
-  requestAnimationFrame(loop);
-}
+    function readQR(){
+      if(video.readyState < 2) return null;
+      const w = video.videoWidth, h = video.videoHeight;
+      if(!w || !h) return null;
 
-startCamera().then(loop).catch(e=>{
-  msg.textContent="カメラ起動失敗";
-});
-</script>
+      canvas.width = w;
+      canvas.height = h;
+      ctx.drawImage(video, 0, 0, w, h);
 
+      const img = ctx.getImageData(0,0,w,h);
+      const code = jsQR(img.data, w, h, { inversionAttempts:"attemptBoth" });
+      return code ? (code.data || "") : null;
+    }
+
+    function extractId(text){
+      text = String(text||"").trim();
+      if(!text) return "";
+      if (/^[A-Za-z0-9_-]{3,}$/.test(text) && !text.includes("http")) return text;
+      try{
+        const u = new URL(text);
+        const id = (u.searchParams.get("id") || u.searchParams.get("ID") || "").trim();
+        if(id) return id;
+      }catch(_){}
+      const m = text.match(/[?&]id=([^&]+)/i);
+      return m ? decodeURIComponent(m[1]).trim() : "";
+    }
+
+    function esc(s){
+      return String(s)
+        .replaceAll("&","&amp;")
+        .replaceAll("<","&lt;")
+        .replaceAll(">","&gt;")
+        .replaceAll('"',"&quot;")
+        .replaceAll("'","&#39;");
+    }
+
+    function showInOk(id){
+      msg.innerHTML = `<span style="font-size:36px;font-weight:1000">${esc(id)} さん</span>`;
+      sub.innerHTML = `<div style="font-size:18px;font-weight:900;color:#444">ありがとうございます　入室OK</div>`;
+    }
+    function showOutOk(id, minutes, amount){
+      msg.innerHTML = `<div style="font-size:34px;font-weight:1000">${esc(id)} さん</div>`;
+      sub.innerHTML =
+        `<div style="font-size:18px;font-weight:900;color:#444;margin-top:6px">退室OK ありがとうございました</div>` +
+        `<div style="font-size:20px;font-weight:900;margin-top:8px">利用時間：${minutes} 分</div>` +
+        `<div style="font-size:34px;font-weight:1000;color:#d44747;margin-top:6px">料金：${amount} 円</div>`;
+    }
+    function showError(title, detail){
+      msg.textContent = title;
+      sub.textContent = detail || "";
+    }
+
+    async function sendAuto(id){
+      const now = Date.now();
+      if(sending || now < lockUntil) return;
+      if(id === lastId && (now - lastIdAt) < DUP_GUARD_MS) return;
+
+      lastId = id;
+      lastIdAt = now;
+
+      sending = true;
+      msg.textContent = "通信中…";
+      sub.textContent = "";
+
+      const url =
+        `${scriptUrl}` +
+        `?id=${encodeURIComponent(id)}` +
+        `&token=${encodeURIComponent(token)}` +
+        `&device=${encodeURIComponent(device)}` +
+        `&t=${Date.now()}`;
+
+      try{
+        const res = await fetch(url, { cache:"no-store" });
+        const data = await res.json();
+
+        if(!res.ok) throw new Error(`HTTP ${res.status}`);
+        if(!data || data.ok !== true) throw new Error(data?.message || "unknown");
+
+        if(data.action === "IN"){
+          showInOk(id);
+          playOK();
+          lockUntil = Date.now() + OK_LOCK_MS;
+        }else if(data.action === "OUT"){
+          showOutOk(id, Number(data.minutes ?? 0), Number(data.amount ?? 0));
+          playOK();
+          lockUntil = Date.now() + OK_LOCK_MS;
+        }else{
+          showError("通信結果が不明", JSON.stringify(data));
+          playNG();
+          lockUntil = Date.now() + FAIL_LOCK_MS;
+        }
+
+      }catch(e){
+        showError("通信失敗。もう一度かざしてね", (e?.message || e));
+        playNG();
+        lockUntil = Date.now() + FAIL_LOCK_MS;
+
+      }finally{
+        setTimeout(()=>{ sending = false; }, 350);
+      }
+    }
+
+    async function sendSale(amount, item){
+      const now = Date.now();
+      if(sending || now < lockUntil) return;
+
+      sending = true;
+      msg.textContent = "通信中…";
+      sub.textContent = "";
+
+      const url =
+        `${scriptUrl}` +
+        `?action=SALE` +
+        `&amount=${encodeURIComponent(amount)}` +
+        `&item=${encodeURIComponent(item)}` +
+        `&token=${encodeURIComponent(token)}` +
+        `&device=${encodeURIComponent(device)}` +
+        `&t=${Date.now()}`;
+
+      try{
+        const res = await fetch(url, { cache:"no-store" });
+        const data = await res.json();
+
+        if(!res.ok) throw new Error(`HTTP ${res.status}`);
+        if(!data || data.ok !== true) throw new Error(data?.message || "unknown");
+
+        msg.textContent = "物販OK";
+        sub.textContent = `${item} / ${amount}円`;
+        playOK();
+        lockUntil = Date.now() + OK_LOCK_MS;
+
+      }catch(e){
+        showError("物販 通信失敗", (e?.message || e));
+        playNG();
+        lockUntil = Date.now() + FAIL_LOCK_MS;
+
+      }finally{
+        setTimeout(()=>{ sending = false; }, 350);
+      }
+    }
+
+    document.getElementById("saleDrink").addEventListener("click", ()=>sendSale(150, "drink"));
+    document.getElementById("saleSnack").addEventListener("click", ()=>sendSale(100, "snack"));
+
+    function loop(){
+      const now = Date.now();
+
+      if(now < lockUntil){
+        requestAnimationFrame(loop);
+        return;
+      }
+
+      if(msg.textContent !== "QRをかざしてください" && !sending){
+        msg.textContent = "QRをかざしてください";
+        sub.textContent = "";
+      }
+
+      const raw = readQR();
+      if(raw){
+        const id = extractId(raw);
+        if(id) sendAuto(id);
+      }
+
+      setTimeout(()=>requestAnimationFrame(loop), SCAN_INTERVAL_MS);
+    }
+
+    (async ()=>{
+      try{
+        await startCamera();
+        requestAnimationFrame(loop);
+      }catch(e){
+        msg.textContent = "カメラ起動に失敗（許可を確認）";
+        sub.textContent = (e?.message || e);
+      }
+    })();
+  </script>
 </body>
 </html>
