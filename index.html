@@ -274,17 +274,23 @@ async function send(id){
 
     lockUntil = Date.now() + 3500;
 
-  }catch(e){
-    // AbortController のタイムアウト
-    if(e && (e.name === "AbortError")){
-      msg.textContent = "通信タイムアウト（8秒）";
-      sub.textContent = "GASが返事してない/URL違い/ネット不調の可能性";
-    }else{
-      msg.textContent = "通信失敗。もう一度かざしてね";
-      sub.textContent = (e?.message || String(e));
-    }
-    playSound("OUT");
-    lockUntil = Date.now() + 1800;
+ } catch (e) {
+  msg.textContent = "通信失敗。もう一度かざしてね";
+
+  // ★ここが重要：何が返ってきたかを必ず出す
+  const m = (e && e.message) ? e.message : String(e);
+  sub.textContent = m;
+
+  // ついでに debug も必ず表示
+  if (typeof debug !== "undefined" && debug) {
+    debug.style.display = "block";
+    debug.textContent = "ERROR: " + m;
+  }
+
+  playSound("OUT");
+  lockUntil = Date.now() + 1800;
+}
+
 
   }finally{
     clearTimeout(timer);
